@@ -237,6 +237,10 @@ static uptr arm32_get_abs PROTO((void *address));
 static void arm32_set_jump PROTO((void *address, uptr item, IBOOL callp));
 static uptr arm32_get_jump PROTO((void *address));
 #endif /* ARMV6 */
+#ifdef ARMV8
+static void arm64_set PROTO((void *address, uptr item));
+static uptr arm64_get PROTO((void *address));
+#endif /* ARMV8 */
 #ifdef PPC32
 static void ppc32_set_abs PROTO((void *address, uptr item));
 static uptr ppc32_get_abs PROTO((void *address));
@@ -1216,6 +1220,13 @@ void S_set_code_obj(who, typ, p, n, x, o) char *who; IFASLCODE typ; iptr n, o; p
             arm32_set_jump(address, item, 1);
             break;
 #endif /* ARMV6 */
+#ifdef ARMV8
+        case reloc_arm64_abs:
+        case reloc_arm64_jump:
+        case reloc_arm64_call:
+            arm64_set(address, item);
+            break;
+#endif /* ARMV8 */
 #ifdef PPC32
         case reloc_ppc32_abs:
             ppc32_set_abs(address, item);
@@ -1291,6 +1302,13 @@ ptr S_get_code_obj(typ, p, n, o) IFASLCODE typ; iptr n, o; ptr p; {
             item = arm32_get_jump(address);
             break;
 #endif /* ARMV6 */
+#ifdef ARMV8
+        case reloc_arm64_abs:
+        case reloc_arm64_jump:
+        case reloc_arm64_call:
+            item = arm64_get(address);
+            break;
+#endif /* ARMV8 */
 #ifdef PPC32
         case reloc_ppc32_abs:
             item = ppc32_get_abs(address);
@@ -1394,6 +1412,37 @@ static uptr arm32_get_jump(void *address) {
   }
 }
 #endif /* ARMV6 */
+
+#ifdef ARMV8
+
+#define IMM16(n) (((n) & (0xFFFF << 5)) >> 5)
+#define HW(n) (((n) & (0x3 << 21)) >> 17)
+
+static void set_inst(void *address, uptr item, int shift) {
+  U32* inst = ((U32 *)address + shift);
+  *inst = (*inst & (~(0x3FFFF << 5))) | (shift << 21) | (((item >> (shift * 16)) & 0xFFFF) << 5);
+}
+
+static void arm64_set(void *address, uptr item) {
+  /* code generator produces movi movi/k movi/k movi/k */
+  set_inst(address, item, 0);
+  set_inst(address, item, 1);
+  set_inst(address, item, 2);
+  set_inst(address, item, 3);
+}
+
+static uptr arm64_get_helper(uptr inst) {
+  return IMM16(inst) << HW(inst);
+}
+
+static uptr arm64_get(void *address) {
+  U32* inst = ((U32 *)address + 0);
+  return arm64_get_helper(*inst++)
+       | arm64_get_helper(*inst++)
+       | arm64_get_helper(*inst++)
+       | arm64_get_helper(*inst);
+}
+#endif /* ARMV8 */
 
 #ifdef PPC32
 
