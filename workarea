@@ -39,6 +39,7 @@ case "$M" in
   a6osx) ;;
   a6s2) ;;
   arm32le) ;;
+  arm64le) ;;
   i3fb) ;;
   i3le) ;;
   i3nb) ;;
