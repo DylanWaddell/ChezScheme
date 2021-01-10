@@ -361,3 +361,25 @@ possibly like this:
 The executable is written to <machine>/bin/<machine>, and it should be
 installed with bootfiles in ../boot/<machine>/ relative to the
 executable.
+
+CROSS-COMPILING ARM64 ON LINUX
+
+To cross-compile the Chez Scheme boot files, you will first need
+compile for a directly supported host architecture, a6le for example.
+
+You will need Chez Scheme cloned on both the host machine and
+the arm64 machine.
+
+In the host architecture's root directory (using a6le for example):
+ ./configure
+ mkdir boot/arm64le
+ cd a6le
+ make
+ make -f Mf-boot arm64le.boot
+
+Now copy the boot/arm64le directory over to your arm64 machine.
+
+In the arm64's root directory:
+ ./configure -m=arm64le
+ cd arm64le
+ make
