@@ -954,9 +954,9 @@
             (if (zero? bits)
                 ls
                 (cons (cons (/ shift 16) bits) ls)))))
+      (safe-assert (<= (integer-length n) 64))
       (cond
         [(zero? n) '((0 . 0))]
-        [(> n (- (ash 1 64) 1)) '()]
         [else
           (cons-bits 48
             (cons-bits 32
@@ -1925,7 +1925,7 @@
                   [(null? p*) (ax-mov64 dest n code*)]
                   [(< (length p*) 3) (finish-move p* #f)]
                   [else
-                   (let ([np* (move-immediate (lognot n))])
+                   (let ([np* (move-immediate (logand (- (ash 1 64) 1) (lognot n)))])
                      (if (< (length np*) 4)
                          (let ([p* (map (lambda (x) (cons (car x) (lognot (cdr x)))) (cdr np*))]
                                [np (car np*)])
