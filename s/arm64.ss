@@ -2162,9 +2162,11 @@
         (lambda (code* dest src)
           (Trivit (dest src)
             (case type
-              [(integer-16 unsigned-16) (emit rev16 dest src code*)]
-              [(integer-32 unsigned-32) (emit rev32 dest src code*)]
-              [(integer-64 unsigned-64) code*]
+              [(integer-16) (emit rev16 dest src (emit sxth dest dest code*))]
+              [(unsigned-16) (emit rev16 dest src code*)]
+              [(integer-32) (emit rev32 dest src (emit sxtw dest dest code*))]
+              [(unsigned-32) (emit rev32 dest src code*)]
+              [(integer-64 unsigned-64) (emit rev dest src code*)]
               [else (sorry! who "unexpected asm-swap type argument ~s" type)]))))))
 
 
