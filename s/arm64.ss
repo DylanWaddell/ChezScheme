@@ -955,13 +955,12 @@
                 ls
                 (cons (cons (/ shift 16) bits) ls)))))
       (safe-assert (<= (integer-length n) 64))
-      (cond
-        [(zero? n) '((0 . 0))]
-        [else
+      (if (zero? n)
+          '((0 . 0))
           (cons-bits 48
             (cons-bits 32
               (cons-bits 16
-                (cons-bits 0 '()))))])))
+                (cons-bits 0 '())))))))
 
   (define-syntax dynamic-reference
     (syntax-rules ()
