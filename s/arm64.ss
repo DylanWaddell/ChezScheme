@@ -13,12 +13,13 @@
 ;;; See the License for the specific language governing permissions and
 ;;; limitations under the License.
 
+;;;  TODO rename r0-r31 to x0-x31 ?
 
 ;;; SECTION 1: registers
 ;;; ABI:
 ;;;  Register usage:
 ;;;   r0-r7:   arguments and returns
-;;;   r8:      syscalls
+;;;   r8:      XR indirect result register
 ;;;   r9-r15:  temporary values, caller save
 ;;;   r16-r18: (avoid) intra-procedure-call and platform values
 ;;;   r19-r28: callee save
@@ -26,9 +27,8 @@
 ;;;   r30:     (avoid) link register
 ;;;   r31:     stack pointer or zero register by context
 ;;;  Floating point:
-;;;   v0-v7:   argument
-;;;   v8-v15:  callee save
-;;;   v16-v31: caller save
+;;;   d0-d7:   argument and result
+;;;   d8-d31:  callee save
 
 
 (define-registers
@@ -45,7 +45,7 @@
   (allocable
     [%ac0  %r25                 #t 25]  ; required order: ac0, xp, ts, td, other ...
     [%xp   %r27                 #t 27]
-    [%ts   %r16  %ip0           #f 16]
+    [%ts   %r16  %ip0           #f 16]  ; TODO why using ip0 and ip1 here ?
     [%td   %r17  %ip1           #f 17]
     [%ac1  %r26                 #t 26]
     [%cp   %r28                 #t 28]
@@ -58,7 +58,7 @@
     [    %r4  %Carg5            #f  4]
     [    %r5  %Carg6            #f  5]
     [    %r6  %Carg7            #f  6]
-    [    %r7  %Carg8            #f  7]
+    [    %r7  %Carg8            #f  7]  ; TODO ? add x9-x15 or use for ac0 etc. ?
     [    %lr                    #f 30]
   )
 
@@ -66,16 +66,16 @@
   (machine-dependent
     [%sp                            #t 31]
     ; [%pc                         #f 15]
-    [%Cfparg1 %Cfpretval      %v0   #f  0] ; < 32: low bit goes in D, N, or M bit, high bits go in Vd, Vn, Vm
-    [%Cfparg2                 %v1   #f  1]
-    [%Cfparg3                 %v2   #f  2]
-    [%Cfparg4                 %v3   #f  3]
-    [%Cfparg5                 %v4   #f  4]
-    [%Cfparg6                 %v5   #f  5]
-    [%Cfparg7                 %v6   #f  6]
-    [%Cfparg8                 %v7   #f  7]
-    [%flreg1                  %v16  #f 16]
-    [%flreg2                  %v17  #f 17]
+    [%Cfparg1 %Cfpretval      %d0   #f  0] ; < 32: low bit goes in D, N, or M bit, high bits go in Vd, Vn, Vm
+    [%Cfparg2                 %d1   #f  1]
+    [%Cfparg3                 %d2   #f  2]
+    [%Cfparg4                 %d3   #f  3]
+    [%Cfparg5                 %d4   #f  4]
+    [%Cfparg6                 %d5   #f  5]
+    [%Cfparg7                 %d6   #f  6]
+    [%Cfparg8                 %d7   #f  7]
+    [%flreg1                  %d16  #f 16]
+    [%flreg2                  %d17  #f 17]
     [%zeroreg            %x31 %rsp  #f 31]
     ))
 
