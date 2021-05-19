@@ -2730,7 +2730,7 @@
                                      live* int* '() #f (fx+ isp 8)))
                                  (loop (cdr types)
                                    (cons (load-double-reg (car sgl*) (constant flonum-data-disp)) locs)
-                                   live* int* (cddr sgl*) bsgl isp))]
+                                   live* int* (cdr sgl*) bsgl isp))]
                             [(fp-single-float)
                              (if bsgl
                                  (loop (cdr types)
@@ -2742,7 +2742,7 @@
                                        live* int* '() #f (fx+ isp 4))
                                      (loop (cdr types)
                                        (cons (load-single-reg (car sgl*) (constant flonum-data-disp) #f) locs)
-                                       live* int* (cddr sgl*) (cadr sgl*) isp)))]
+                                       live* int* (cdr sgl*) bsgl isp)))]
                             [(fp-ftd& ,ftd)
                              (let ([size ($ftd-size ftd)]
                                    [members ($ftd->members ftd)]
