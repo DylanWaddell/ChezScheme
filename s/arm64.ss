@@ -1433,12 +1433,27 @@
 
 
   (define-op scvtf.gpr->dbl  fmov-op.gpr->flt  #b1  #b01 #b00 #b010)  ; signed integer convert to double
-  (define-op fmov.dbl->gpr   fmov-op.flt->gpr  #b1  #b01 #b00 #b110)
+  (define-op fcvtzs          FOO-op  #b1  #b01)
+
+  (define FOO-op
+    (lambda (op sf type flsrc gpreg code*)
+      (emit-code (op flsrc gpreg code*)
+        [31 1]
+        [30 0]
+        [29 0]
+        [24 #b11110]
+        [22 type]
+        [21 1]
+        [19 #b11]
+        [16 #b000]
+        [10 #b000000]
+        [5 (reg-mdinfo flsrc)]
+        [0 (ax-ea-reg-code gpreg)])))
 
   (define-op fcvt.sgl->dbl   fcvt-op           #b00 #b01)
   (define-op fcvt.dbl->sgl   fcvt-op           #b01 #b00)
 
-
+  ;; TODO unused?
   (define fmov-op.gpr->flt
     (lambda (op sf type rmode opcode dest src code*)
       (emit-code (op dest src code*)
@@ -1453,6 +1468,7 @@
         [5 (ax-ea-reg-code src)]
         [0 (reg-mdinfo dest)])))
 
+  ;; TODO unused?
   (define fmov-op.flt->gpr
     (lambda (op sf type rmode opcode src dest code*)
       (emit-code (op src dest code*)
@@ -2135,7 +2151,7 @@
     (lambda (code* dest flonumreg)
       (Trivit (dest flonumreg)
         (emit fldri.dbl %flreg1 flonumreg 0
-          (emit fmov.dbl->gpr %flreg1 dest code*)))))
+          (emit fcvtzs %flreg1 dest code*)))))
 
   (define asm-flt
     (lambda (code* src flonumreg)
