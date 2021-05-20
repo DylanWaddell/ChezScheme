@@ -2704,6 +2704,7 @@
                          (set! ,hireg ,(%mref ,x ,(fx+ from-offset 4))))))]
                  [do-args
                   (lambda (types)
+                    ;; TODO get rid of bsgl stuff if we don't need it
                     ; sgl* is always of even-length, i.e., has a sgl/dbl reg first
                     ; bsgl is set to "b" single (second half of double) if we have one to fill
                     (let loop ([types types] [locs '()] [live* '()] [int* (int-regs)] [sgl* (sgl-regs)] [bsgl #f] [isp 0])
