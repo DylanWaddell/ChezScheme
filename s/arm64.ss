@@ -1148,32 +1148,20 @@
   (define-op shifti shifti-op)
   (define-op shift shift-op)
 
-  (define-op sxtb sx-op #b00 #b1 #b000111)
-  (define-op sxth sx-op #b00 #b1 #b001111)
-  (define-op sxtw sx-op #b00 #b1 #b011111)
-  (define-op uxtb sx-op #b10 #b0 #b000111)
-  (define-op uxth sx-op #b10 #b0 #b001111)
-
-  (define-op uxtw
-    (lambda (mneu dest-ea opnd-ea code*)
-      (emit-code (mneu dest-ea opnd-ea code*)
-        [31 1]
-        [29 #b00]
-        [24 #b01011]
-        [21 #b001]
-        [16 (ax-ea-reg-code opnd-ea)]
-        [13 #b010]
-        [10 #b000]
-        [5 #b11111]
-        [0 (ax-ea-reg-code dest-ea)])))
+  (define-op sxtb sx-op #b00 #b000111)
+  (define-op sxth sx-op #b00 #b001111)
+  (define-op sxtw sx-op #b00 #b011111)
+  (define-op uxtb sx-op #b10 #b000111)
+  (define-op uxth sx-op #b10 #b001111)
+  (define-op uxtw sx-op #b10 #b011111)
 
   (define sx-op
-    (lambda (mneu opc N imms dest-ea opnd-ea code*)
+    (lambda (mneu opc imms dest-ea opnd-ea code*)
       (emit-code (mneu dest-ea opnd-ea code*)
         [31 1]
-        [29 opc]
+        [29 opc]      ; #b00: SBFM, #b10: UBFM
         [23 #b100110]
-        [22 N]        ; signed
+        [22 #b1]
         [16 #b000000]
         [10 imms]     ; data type
         [5 (ax-ea-reg-code opnd-ea)]
