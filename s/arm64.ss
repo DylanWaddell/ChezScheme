@@ -1433,7 +1433,7 @@
 
 
   (define-op scvtf.gpr->dbl  fmov-op.gpr->flt  #b1  #b01 #b00 #b010)  ; signed integer convert to double
-  (define-op fmov.dbl->gpr   fmov-op.flt->gpr  #b1  #b01 #b00 #b110)
+  (define-op fmov.dbl->gpr   fmov-op.flt->gpr  #b1  #b01 #b00 #b111)
 
   (define-op fcvt.sgl->dbl   fcvt-op           #b00 #b01)
   (define-op fcvt.dbl->sgl   fcvt-op           #b01 #b00)
