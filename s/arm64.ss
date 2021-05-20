@@ -1429,31 +1429,27 @@
   (define-op bls   branch-label-op     (ax-cond 'ls))
   (define-op bhi   branch-label-op     (ax-cond 'hi))
 
+  (define-op scvtf.gpr->dbl  (FOO-op ax-ea-reg-code reg-mdinfo) #b1 #b01 #b00 #b010)  ; signed integer convert to double
+  (define-op fcvtzs.dbl->gpr (FOO-op reg-mdinfo ax-ea-reg-code) #b1 #b01 #b11 #b000)
 
-
-
-  (define-op scvtf.gpr->dbl  fmov-op.gpr->flt  #b1  #b01 #b00 #b010)  ; signed integer convert to double
-  (define-op fcvtzs          FOO-op  #b1  #b01)
-
-  (define FOO-op
-    (lambda (op sf type flsrc gpreg code*)
-      (emit-code (op flsrc gpreg code*)
-        [31 1]
-        [30 0]
-        [29 0]
+  ;; TODO rename
+  (define (FOO-op encode-src encode-dest)
+    (lambda (op sf type rmode opcode src dest code*)
+      (emit-code (op src dest code*)
+        [31 sf]
+        [29 #b00]
         [24 #b11110]
         [22 type]
         [21 1]
-        [19 #b11]
-        [16 #b000]
+        [19 rmode]
+        [16 opcode]
         [10 #b000000]
-        [5 (reg-mdinfo flsrc)]
-        [0 (ax-ea-reg-code gpreg)])))
+        [5 (encode-src src)]
+        [0 (encode-dest dest)])))
 
   (define-op fcvt.sgl->dbl   fcvt-op           #b00 #b01)
   (define-op fcvt.dbl->sgl   fcvt-op           #b01 #b00)
 
-  ;; TODO unused?
   (define fmov-op.gpr->flt
     (lambda (op sf type rmode opcode dest src code*)
       (emit-code (op dest src code*)
@@ -2151,12 +2147,12 @@
     (lambda (code* dest flonumreg)
       (Trivit (dest flonumreg)
         (emit fldri.dbl %flreg1 flonumreg 0
-          (emit fcvtzs %flreg1 dest code*)))))
+          (emit fcvtzs.dbl->gpr %flreg1 dest code*)))))
 
   (define asm-flt
     (lambda (code* src flonumreg)
       (Trivit (src flonumreg)
-        (emit scvtf.gpr->dbl %flreg1 src
+        (emit scvtf.gpr->dbl src %flreg1
           (emit fstri.dbl %flreg1 flonumreg 0 code*)))))
 
   (define-who asm-swap
