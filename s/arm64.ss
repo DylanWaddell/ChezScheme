@@ -2626,11 +2626,11 @@
         [(fp-ftd& ,ftd)
          (let* ([members ($ftd->members ftd)]
                 [num-members (length members)])
-           (or (fx<= ($ftd-size ftd) 4)
+           (or (fx<= ($ftd-size ftd) 8)
                (and (fx= num-members 1)
                     ;; a struct containing only int64 is not returned in a register
                     (or (not ($ftd-compound? ftd))))
-               (and (fx<= num-members 4)
+               (and (fx<= num-members 8)
                     (or (andmap double-member? members)
                         (andmap float-member? members)))))]
         [else #f]))
@@ -3004,8 +3004,10 @@
                 `(set! ,lvalue ,(%inline + ,%sp (immediate ,offset))))))
           (define count-reg-args
             (lambda (types synthesize-first?)
+              ;; TODO can we remove this bsgl? stuff?
               ; bsgl? is #t iff we have a "b" single (second half of double) float reg to fill
-              (let f ([types types] [iint (if synthesize-first? -1 0)] [idbl 0] [bsgl? #f])
+              (let f ([types types] [iint (if synthesize-first? -1 0)] [idbl 0] [ignore-bsgl? #f])
+                (define bsgl? #f)
                 (if (null? types)
                     (values iint idbl)
                     (nanopass-case (Ltype Type) (car types)
@@ -3017,7 +3019,7 @@
                        (if bsgl?
                            (f (cdr types) iint idbl #f)
                            (if (fx< idbl 8)
-                               (f (cdr types) iint (fx+ idbl 1) #t)
+                               (f (cdr types) iint (fx+ idbl 1) bsgl?)
                                (f (cdr types) iint idbl #f)))]
                       [(fp-ftd& ,ftd)
                        (let* ([size ($ftd-size ftd)]
@@ -3028,7 +3030,7 @@
                                 (andmap double-member? members))
                            ;; doubles are either in registers or all on stack
                            (if (fx<= (fx+ idbl num-members) 8)
-                               (f (cdr types) iint (fx+ idbl num-members) #f)
+                               (f (cdr types) iint (fx+ idbl num-members) bsgl?)
                                ;; no more floating-point registers should be used, but ok if we count more
                                (f (cdr types) iint idbl #f))]
                           [(and (fx<= num-members 4)
@@ -3052,6 +3054,7 @@
                              [(fp-integer ,bits) (fx= bits 64)]
                              [(fp-unsigned ,bits) (fx= bits 64)]
                              [else #f])
+                           ;; TODO huh? what is all of this stuff?
                            (let ([iint (align 2 iint)])
                              (f (cdr types) (if (fx< iint 4) (fx+ iint 2) iint) idbl bsgl?))
                            (f (cdr types) (if (fx< iint 4) (fx+ iint 1) iint) idbl bsgl?))])))))
@@ -3256,10 +3259,10 @@
                    [result-type (info-foreign-result-type info)]
                    [synthesize-first? (indirect-result-that-fits-in-registers? result-type)])
               (let-values ([(iint idbl) (count-reg-args arg-type* synthesize-first?)])
-                (let ([saved-reg-bytes (fx* isaved 4)]
-                      [pre-pad-bytes (if (fxeven? isaved) 0 4)]
-                      [int-reg-bytes (fx* iint 4)]
-                      [post-pad-bytes (if (fxeven? iint) 0 4)]
+                (let ([saved-reg-bytes (fx* isaved 8)]
+                      [pre-pad-bytes (if (fxeven? isaved) 0 8)]
+                      [int-reg-bytes (fx* iint 8)]
+                      [post-pad-bytes (if (fxeven? iint) 0 8)]
                       [float-reg-bytes (fx* idbl 8)])
                   (let-values ([(get-result result-regs return-bytes) (do-result result-type synthesize-first?
                                                                                  (fx+ saved-reg-bytes pre-pad-bytes))])
