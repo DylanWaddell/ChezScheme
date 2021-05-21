@@ -2181,7 +2181,7 @@
       (Trivit (src tmp)
         (emit ldxr tmp src
           (emit cmpi tmp 0
-            (emit bnei 1
+            (emit bnei 2
               (emit movi tmp 1
                 (emit stxr tmp tmp src code*))))))))
 
@@ -2217,7 +2217,7 @@
       (Trivit (src old new tmp1 tmp2)
         (emit ldxr tmp1 src
           (emit cmp tmp1 old
-            (emit bnei 1
+            (emit bnei 2
               (emit stxr tmp2 new src
                 (emit cmpi tmp2 0
                    code*))))))))
