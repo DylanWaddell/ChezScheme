@@ -2655,12 +2655,6 @@
                    (lambda (offset)
                      (lambda (rhs) ; requires rhs
                        `(set! ,(%mref ,%sp ,offset) ,rhs)))]
-                 [load-int64-stack
-                   (lambda (offset)
-                     (lambda (lorhs hirhs) ; requires rhs
-                       (%seq
-                         (set! ,(%mref ,%sp ,offset) ,lorhs)
-                         (set! ,(%mref ,%sp ,(fx+ offset 4)) ,hirhs))))]
                  [load-int-indirect-stack
                    (lambda (offset from-offset size)
                      (lambda (x) ; requires var
@@ -2821,16 +2815,13 @@
                                                           (combine-loc loc (load-int-indirect-reg (car int*) offset (fxmin size 4)))
                                                           (cons (car int*) live*) (cdr int*) isp))]))]))]))]
                             [else
-                                 (if (null? int*)
-                                   [begin
-                                     (loop (cdr types)
-                                       (cons (load-int-stack isp) locs)
-                                       live* '() sgl* bsgl (fx+ isp 4)) ]
-                                   [begin
-                                     (loop (cdr types)
-                                       (cons (load-int-reg (car int*)) locs)
-                                       (cons (car int*) live*) (cdr int*) sgl* bsgl isp) ]
-                                       )]))))]
+                             (if (null? int*)
+                                 (loop (cdr types)
+                                   (cons (load-int-stack isp) locs)
+                                   live* '() sgl* bsgl (fx+ isp 8))
+                                 (loop (cdr types)
+                                   (cons (load-int-reg (car int*)) locs)
+                                   (cons (car int*) live*) (cdr int*) sgl* bsgl isp))]))))]
                  [add-fill-result
                   (lambda (fill-result-here? result-type args-frame-size e)
                     (cond
