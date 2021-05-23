@@ -45,10 +45,10 @@
   (allocable
     [%ac0  %r25                 #t 25]  ; required order: ac0, xp, ts, td, other ...
     [%xp   %r27                 #t 27]
-    [%ts   %r16  %ip0           #f 16]  ; TODO why using ip0 and ip1 here ?
-    [%td   %r17  %ip1           #f 17]
+    [%ts   %r28                 #t 28]
+    [%td   %r10                 #f 10]
     [%ac1  %r26                 #t 26]
-    [%cp   %r28                 #t 28]
+    [%cp   %r11                 #f 11]
     #;[%yp]
     #;[%ret]
     [    %r0  %Carg1 %Cretval   #f  0]
@@ -58,15 +58,15 @@
     [    %r4  %Carg5            #f  4]
     [    %r5  %Carg6            #f  5]
     [    %r6  %Carg7            #f  6]
-    [    %r7  %Carg8            #f  7]  ; TODO ? add x9-x15 or use for ac0 etc. ?
-    [    %lr                    #f 30]
+    [    %r7  %Carg8            #f  7]
+    [    %r12                   #f 12]
+    [    %r13                   #f 13]
+    [    %r14                   #f 14]
+    [    %r15                   #f 15]
   )
-
-
   (machine-dependent
     [%sp                            #t 31]
-    ; [%pc                         #f 15]
-    [%Cfparg1 %Cfpretval      %d0   #f  0] ; < 32: low bit goes in D, N, or M bit, high bits go in Vd, Vn, Vm
+    [%Cfparg1 %Cfpretval      %d0   #f  0]
     [%Cfparg2                 %d1   #f  1]
     [%Cfparg3                 %d2   #f  2]
     [%Cfparg4                 %d3   #f  3]
@@ -76,7 +76,9 @@
     [%Cfparg8                 %d7   #f  7]
     [%flreg1                  %d16  #f 16]
     [%flreg2                  %d17  #f 17]
-    [%zeroreg            %x31 %rsp  #f 31]
+    [%fp                            #t 29]
+    [%lr                            #t 30]
+    [%zeroreg                 %x31  #f 31]
     ))
 
 ;;; SECTION 2: instructions
@@ -805,6 +807,7 @@
          `(set! ,(make-live-info) ,ulr (asm ,null-info ,asm-kill))
          `(asm ,info ,asm-indirect-call ,x ,ulr ,(info-kill*-live*-live* info) ...)))])
 
+  ;; TODO remove push/pop multiple
   (define-instruction effect (pop-multiple)
     [(op) `(asm ,info ,(asm-pop-multiple (info-kill*-kill* info)))])
 
@@ -1203,6 +1206,8 @@
   ; 64 bit (extended)
   (define-op ldri   ldr/str-imm-op       #b11 #b01)
   (define-op stri   ldr/str-imm-op       #b11 #b00)
+  (define-op ldpi   ldp/stp-imm-op       #b10 #b1)
+  (define-op sdpi   ldp/stp-imm-op       #b10 #b0)
   (define-op ldur   ldur/stur-imm-op     #b11 #b01)
   (define-op stur   ldur/stur-imm-op     #b11 #b00)
 
@@ -1273,6 +1278,19 @@
         [10 #b00]
         [5 (ax-ea-reg-code base)]
         [0 (ax-ea-reg-code dest)])))
+
+  (define ldp/stp-imm-op
+    (lambda (mneu size L r1 r2 base simm7 code*)
+      (emit-code (mneu dest r1 r2 base simm7 code*)
+        [30 size]
+        [27 #b101]
+        [26 #b0]
+        [23 #b010]
+        [22 L]
+        [15 (fxlogand #x1ff simm7)]
+        [10 (ax-ea-reg-code r2)]
+        [5 (ax-ea-reg-code base)]
+        [0 (ax-ea-reg-code r1)])))
 
   (define ldur/stur-fl-imm-op
     (lambda (mneu size opc dest base simm9 code*)
@@ -2922,8 +2940,8 @@
                   )))))))
 
 ; TODO update this and its dependents to be aarch64
-; Reference the Procedure Call Standard for the ARM 64-bit Architecture (pg 18)
-
+;; See the Procedure Call Standard for the ARM 64-bit Architecture
+;; at https://github.com/ARM-software/abi-aa/releases
     (define-who asm-foreign-callable
       #|
         Frame Layout
@@ -2931,7 +2949,7 @@
                    |                           |
                    |    incoming stack args    |
   sp+36+R+X+Y+Z+W: |                           |
-                   +---------------------------+<- 8-byte boundary
+                   +---------------------------+<- 16-byte boundary
                    |                           |
                    |    saved int reg args     | 0-4 words
     sp+36+R+X+Y+Z: |                           |
@@ -2953,9 +2971,12 @@
             sp+36: |                           |
                    +---------------------------+
                    |                           |
-                   |   callee-save regs + lr   | 9 words
-             sp+0: |                           |
-                   +---------------------------+<- 8-byte boundary
+                   |   callee-save regs        | 10 words x19 .. x28   TODO only need ones we might clobber, right?
+                   +---------------------------+
+             sp+8: |   saved lr (x30)          |
+                   +---------------------------+
+             sp+0: |   saved fp (x29)          | <- fp
+                   +---------------------------+<- 16-byte boundary
 
       X = 0 or 4 (depending on whether pad is present)
       Y = int-reg-bytes
@@ -2983,44 +3004,38 @@
                    (case bits
                      [(8) `(set! ,lvalue (inline ,(make-info-load 'integer-8 #f) ,%load ,%sp ,%zero (immediate ,offset)))]
                      [(16) `(set! ,lvalue (inline ,(make-info-load 'integer-16 #f) ,%load ,%sp ,%zero (immediate ,offset)))]
-                     [(32) `(set! ,lvalue ,(%mref ,%sp ,offset))]
+                     [(32) `(set! ,lvalue (inline ,(make-info-load 'integer-32 #f) ,%load ,%sp ,%zero (immediate ,offset)))]
+                     [(64) `(set! ,lvalue ,(%mref ,%sp ,offset))]
                      [else (sorry! who "unexpected load-int-stack fp-integer size ~s" bits)])]
                   [(fp-unsigned ,bits)
                    (case bits
                      [(8) `(set! ,lvalue (inline ,(make-info-load 'unsigned-8 #f) ,%load ,%sp ,%zero (immediate ,offset)))]
                      [(16) `(set! ,lvalue (inline ,(make-info-load 'unsigned-16 #f) ,%load ,%sp ,%zero (immediate ,offset)))]
-                     [(32) `(set! ,lvalue ,(%mref ,%sp ,offset))]
+                     [(32) `(set! ,lvalue (inline ,(make-info-load 'unsigned-32 #f) ,%load ,%sp ,%zero (immediate ,offset)))]
+                     [(64) `(set! ,lvalue ,(%mref ,%sp ,offset))]
                      [else (sorry! who "unexpected load-int-stack fp-unsigned size ~s" bits)])]
                   [else `(set! ,lvalue ,(%mref ,%sp ,offset))]))))
-          (define load-int64-stack
-            (lambda (offset)
-              (lambda (lolvalue hilvalue)
-                (%seq
-                  (set! ,lolvalue ,(%mref ,%sp ,offset))
-                  (set! ,hilvalue ,(%mref ,%sp ,(fx+ offset 4)))))))
           (define load-stack-address
             (lambda (offset)
               (lambda (lvalue)
                 `(set! ,lvalue ,(%inline + ,%sp (immediate ,offset))))))
-          (define count-reg-args
+          (define int-arg-reg-cnt 8)
+          (define dbl-arg-reg-cnt 8)
+          ;; TODO deal with synthesize-first?
+          (define save-arg-regs
             (lambda (types synthesize-first?)
-              ;; TODO can we remove this bsgl? stuff?
-              ; bsgl? is #t iff we have a "b" single (second half of double) float reg to fill
-              (let f ([types types] [iint (if synthesize-first? -1 0)] [idbl 0] [ignore-bsgl? #f])
-                (define bsgl? #f)
+              (let f ([types types] [iint (if synthesize-first? -1 0)] [idbl 0])
                 (if (null? types)
                     (values iint idbl)
                     (nanopass-case (Ltype Type) (car types)
                       [(fp-double-float)
-                       (if (fx< idbl 8)
-                           (f (cdr types) iint (fx+ idbl 1) bsgl?)
-                           (f (cdr types) iint idbl #f))]
+                       (if (fx< idbl dbl-arg-reg-cnt)
+                           (f (cdr types) iint (fx+ idbl 1))
+                           (f (cdr types) iint idbl))]
                       [(fp-single-float)
-                       (if bsgl?
-                           (f (cdr types) iint idbl #f)
-                           (if (fx< idbl 8)
-                               (f (cdr types) iint (fx+ idbl 1) bsgl?)
-                               (f (cdr types) iint idbl #f)))]
+                       (if (fx< idbl dbl-arg-reg-cnt)
+                           (f (cdr types) iint (fx+ idbl 1))
+                           (f (cdr types) iint idbl))]
                       [(fp-ftd& ,ftd)
                        (let* ([size ($ftd-size ftd)]
                               [members ($ftd->members ftd)]
@@ -3030,34 +3045,24 @@
                                 (andmap double-member? members))
                            ;; doubles are either in registers or all on stack
                            (if (fx<= (fx+ idbl num-members) 8)
-                               (f (cdr types) iint (fx+ idbl num-members) bsgl?)
+                               (f (cdr types) iint (fx+ idbl num-members))
                                ;; no more floating-point registers should be used, but ok if we count more
-                               (f (cdr types) iint idbl #f))]
+                               (f (cdr types) iint idbl))]
                           [(and (fx<= num-members 4)
                                 (andmap float-member? members))
                            ;; floats are either in registers or all on stack
-                           (let ([amt (fxsrl (align 2 (fx- num-members (if bsgl? 1 0))) 1)])
+                           (let ([amt (fxsrl (align 2 num-members) 1)])
                              (if (fx<= (fx+ idbl amt) 8)
-                                 (let ([odd-floats? (fxodd? num-members)])
-                                   (if bsgl?
-                                       (f (cdr types) iint (+ idbl amt) (not odd-floats?))
-                                       (f (cdr types) iint (+ idbl amt) odd-floats?)))
+                                 (f (cdr types) iint (+ idbl amt))
                                  ;; no more floating-point registers should be used, but ok if we count more
-                                 (f (cdr types) iint idbl #f)))]
+                                 (f (cdr types) iint idbl)))]
                           [(fx= 8 ($ftd-alignment ftd))
-                           (f (cdr types) (fxmin 4 (fx+ (align 2 iint) (fxsrl size 2))) idbl bsgl?)]
+                           (f (cdr types) (fxmin 4 (fx+ (align 2 iint) (fxsrl size 2))) idbl)]
                           [else
                            (let ([size (align 4 size)])
-                             (f (cdr types) (fxmin 4 (fx+ iint (fxsrl size 2))) idbl bsgl?))]))]
+                             (f (cdr types) (fxmin 4 (fx+ iint (fxsrl size 2))) idbl))]))]
                       [else
-                       (if (nanopass-case (Ltype Type) (car types)
-                             [(fp-integer ,bits) (fx= bits 64)]
-                             [(fp-unsigned ,bits) (fx= bits 64)]
-                             [else #f])
-                           ;; TODO huh? what is all of this stuff?
-                           (let ([iint (align 2 iint)])
-                             (f (cdr types) (if (fx< iint 4) (fx+ iint 2) iint) idbl bsgl?))
-                           (f (cdr types) (if (fx< iint 4) (fx+ iint 1) iint) idbl bsgl?))])))))
+                       (f (cdr types) (if (fx< iint int-arg-reg-cnt) (fx+ iint 1) iint) idbl)])))))
           (define do-stack
             ; all of the args are on the stack at this point, though not contiguous since
             ; we push all of the int reg args with one push instruction and all of the
@@ -3169,27 +3174,13 @@
                                      (cons (load-stack-address stack-arg-offset) locs)
                                      iint idbl bsgl-offset int-reg-offset float-reg-offset (fx+ stack-arg-offset size))))]))]
                         [else
-                         (if (nanopass-case (Ltype Type) (car types)
-                               [(fp-integer ,bits) (fx= bits 64)]
-                               [(fp-unsigned ,bits) (fx= bits 64)]
-                               [else #f])
-                             (let ([int-reg-offset (if (fxeven? iint) int-reg-offset (fx+ int-reg-offset 4))]
-                                   [iint (align 2 iint)])
-                               (if (fx= iint 4)
-                                   (let ([stack-arg-offset (align 8 stack-arg-offset)])
-                                     (loop (cdr types)
-                                       (cons (load-int64-stack stack-arg-offset) locs)
-                                       iint idbl bsgl-offset int-reg-offset float-reg-offset (fx+ stack-arg-offset 8)))
-                                   (loop (cdr types)
-                                     (cons (load-int64-stack int-reg-offset) locs)
-                                     (fx+ iint 2) idbl bsgl-offset (fx+ int-reg-offset 8) float-reg-offset stack-arg-offset)))
-                             (if (fx= iint 4)
-                                 (loop (cdr types)
-                                   (cons (load-int-stack (car types) stack-arg-offset) locs)
-                                   iint idbl bsgl-offset int-reg-offset float-reg-offset (fx+ stack-arg-offset 4))
-                                 (loop (cdr types)
-                                   (cons (load-int-stack (car types) int-reg-offset) locs)
-                                   (fx+ iint 1) idbl bsgl-offset (fx+ int-reg-offset 4) float-reg-offset stack-arg-offset)))]))))))
+                         (if (fx= iint 4)
+                             (loop (cdr types)
+                               (cons (load-int-stack (car types) stack-arg-offset) locs)
+                               iint idbl bsgl-offset int-reg-offset float-reg-offset (fx+ stack-arg-offset 4))
+                             (loop (cdr types)
+                               (cons (load-int-stack (car types) int-reg-offset) locs)
+                               (fx+ iint 1) idbl bsgl-offset (fx+ int-reg-offset 4) float-reg-offset stack-arg-offset))]))))))
           (define do-result
             (lambda (result-type synthesize-first? return-stack-offset)
               (nanopass-case (Ltype Type) result-type
@@ -3253,8 +3244,8 @@
                            (list %Cretval %r1)
                            0)])))
           (lambda (info)
-            (define callee-save-regs+lr (list %r19 %r20 %r21 %r22 %r23 %r24 %r25 %r26 %r27 %r28 %lr))
-            (define isaved (length callee-save-regs+lr))
+            (define callee-save-regs (list %r19 %r20 %r21 %r22 %r23 %r24 %r25 %r26 %r27 %r28))
+            (define isaved (+ 2 (length callee-save-regs))) ;; +2 for %fp and %lr
             (let* ([arg-type* (info-foreign-arg-type* info)]
                    [result-type (info-foreign-result-type info)]
                    [synthesize-first? (indirect-result-that-fits-in-registers? result-type)])
@@ -3265,42 +3256,40 @@
                       [post-pad-bytes (if (fxeven? iint) 0 8)]
                       [float-reg-bytes (fx* idbl 8)])
                   (let-values ([(get-result result-regs return-bytes) (do-result result-type synthesize-first?
-                                                                                 (fx+ saved-reg-bytes pre-pad-bytes))])
+                                                                        (fx+ saved-reg-bytes pre-pad-bytes))])
                     (let ([return-bytes (align 8 return-bytes)])
-                      (values
-                       (lambda ()
-                          (%seq
-                            ; save argument register values to the stack so we don't lose the values
-                            ; across possible calls to C while setting up the tc and allocating memory
-                            ,(if (fx= iint 0) `(nop) `(inline ,(make-info-kill*-live* '() (list-head (list %Carg1 %Carg2 %Carg3 %Carg4) iint)) ,%push-multiple))
-                            ; pad if necessary to force 8-byte boundary, and make room for indirect return:
-                            ,(let ([len (+ post-pad-bytes return-bytes)])
-                               (if (fx= len 0) `(nop) `(set! ,%sp ,(%inline - ,%sp (immediate ,len)))))
-                            ,(if (fx= idbl 0) `(nop) `(inline ,(make-info-vpush %Cfparg1 idbl) ,%vpush-multiple))
-                            ; pad if necessary to force 8-byte boundardy after saving callee-save-regs+lr
-                            ,(if (fx= pre-pad-bytes 0) `(nop) `(set! ,%sp ,(%inline - ,%sp (immediate 4))))
-
-                            ; save the callee save registers & return address
-                            (inline ,(make-info-kill*-live* '() callee-save-regs+lr) ,%push-multiple)
-
-                            ; set up tc for benefit of argument-conversion code, which might allocate
-                            ,(if-feature pthreads
-                               (%seq
-                                 (set! ,%r0 ,(%inline get-tc))
-                                 (set! ,%tc ,%r0))
-                               `(set! ,%tc (literal ,(make-info-literal #f 'entry (lookup-c-entry thread-context) 0))))))
+                      (define (c-init)
+                        (%seq
+                          ; save argument register values to the stack so we don't lose the values
+                          ; across possible calls to C while setting up the tc and allocating memory
+                          ,(save-arg-regs arg-type*)
+                          ; pad if necessary to force 8-byte boundary, and make room for indirect return:
+                          ,(let ([len (+ post-pad-bytes return-bytes)])
+                             (if (fx= len 0) `(nop) `(set! ,%sp ,(%inline - ,%sp (immediate ,len)))))
+                          ,(if (fx= idbl 0) `(nop) `(inline ,(make-info-vpush %Cfparg1 idbl) ,%vpush-multiple))
+                          ; pad if necessary to force 8-byte boundardy after saving callee-save-regs
+                          ,(if (fx= pre-pad-bytes 0) `(nop) `(set! ,%sp ,(%inline - ,%sp (immediate 4))))
+                          ; save the callee save registers & return address
+                          (inline ,(make-info-kill*-live* '() callee-save-regs) ,%push-multiple)
+                          ; set up tc for benefit of argument-conversion code, which might allocate
+                          ,(if-feature pthreads
+                             (%seq
+                               (set! ,%r0 ,(%inline get-tc))
+                               (set! ,%tc ,%r0))
+                             `(set! ,%tc (literal ,(make-info-literal #f 'entry (lookup-c-entry thread-context) 0))))))
+                      (define c-args
                         ; list of procedures that marshal arguments from their C stack locations
                         ; to the Scheme argument locations
                         (do-stack arg-type* saved-reg-bytes pre-pad-bytes return-bytes float-reg-bytes post-pad-bytes int-reg-bytes
-                                  synthesize-first?)
-                        get-result
-                        (lambda ()
-                          (in-context Tail
-                            (%seq
-                              ; restore the callee save registers
-                              (inline ,(make-info-kill* callee-save-regs+lr) ,%pop-multiple)
-                              ; deallocate space for pad & arg reg values
-                              (set! ,%sp ,(%inline + ,%sp (immediate ,(fx+ pre-pad-bytes int-reg-bytes post-pad-bytes float-reg-bytes))))
-                              ; done
-                              (asm-c-return ,null-info ,callee-save-regs+lr ... ,result-regs ...)))))))))))))))
+                          synthesize-first?))
+                      (define (c-return)
+                        (in-context Tail
+                          (%seq
+                            ; restore the callee save registers
+                            (inline ,(make-info-kill* callee-save-regs+lr) ,%pop-multiple)
+                            ; deallocate space for pad & arg reg values
+                            (set! ,%sp ,(%inline + ,%sp (immediate ,(fx+ pre-pad-bytes int-reg-bytes post-pad-bytes float-reg-bytes))))
+                            ; done
+                            (asm-c-return ,null-info ,callee-save-regs+lr ... ,result-regs ...))))
+                      (values c-init c-args get-result c-return)))))))))))
 )
