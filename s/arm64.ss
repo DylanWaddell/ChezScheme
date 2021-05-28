@@ -28,7 +28,8 @@
 ;;;   r31:     stack pointer or zero register by context
 ;;;  Floating point:
 ;;;   d0-d7:   argument and result
-;;;   d8-d31:  callee save
+;;;   d8-d15:  callee save
+;;;   d16-d31: caller save
 
 
 (define-registers
@@ -1020,7 +1021,7 @@
 
   (define-op movn
     (lambda (mneu dest-ea imm16 shift16 code*)
-      (emit-code ('movn dest-ea imm16 shift16 code*)
+      (emit-code (mneu dest-ea imm16 shift16 code*)
         [31 #b1]
         [29 #b00]
         [23 #b100101]
@@ -1281,7 +1282,7 @@
 
   (define ldp/stp-imm-op
     (lambda (mneu size L r1 r2 base simm7 code*)
-      (emit-code (mneu dest r1 r2 base simm7 code*)
+      (emit-code (mneu r1 r2 base simm7 code*)
         [30 size]
         [27 #b101]
         [26 #b0]
@@ -2706,6 +2707,7 @@
                        `(set! ,ireg ,x)))]
                  [load-int-indirect-reg
                    (lambda (ireg from-offset size)
+                     ;; TODO deal with this stuff
                      (lambda (x)
                        (case size
                          [(3)
@@ -2752,11 +2754,12 @@
                                  (if (null? sgl*)
                                      (loop (cdr types)
                                        (cons (load-single-stack isp) locs)
-                                       live* int* '() #f (fx+ isp 4))
+                                       live* int* '() #f (fx+ isp 8))
                                      (loop (cdr types)
                                        (cons (load-single-reg (car sgl*) (constant flonum-data-disp) #f) locs)
                                        live* int* (cdr sgl*) bsgl isp)))]
                             [(fp-ftd& ,ftd)
+                             ;; TODO deal with this stuff
                              (let ([size ($ftd-size ftd)]
                                    [members ($ftd->members ftd)]
                                    [combine-loc (lambda (loc f)
@@ -2893,7 +2896,7 @@
                 (lambda (args-frame-size locs live*)
                   (let* ([frame-size (align 16 (+ args-frame-size
                                                  (if fill-result-here?
-                                                     4
+                                                     4         ;; TODO likely 8 ?
                                                      0)))]
                          [adjust-frame (lambda (op)
                                          (lambda ()
@@ -2939,7 +2942,9 @@
                       (adjust-frame %+)))
                   )))))))
 
-; TODO update this and its dependents to be aarch64
+;; TODO deal with synthesize-first?
+;; TODO save / restore pairs of registers via sdpi / ldpi
+;; TODO update this and its dependents to be aarch64
 ;; See the Procedure Call Standard for the ARM 64-bit Architecture
 ;; at https://github.com/ARM-software/abi-aa/releases
     (define-who asm-foreign-callable
@@ -2951,19 +2956,11 @@
   sp+36+R+X+Y+Z+W: |                           |
                    +---------------------------+<- 16-byte boundary
                    |                           |
-                   |    saved int reg args     | 0-4 words
-    sp+36+R+X+Y+Z: |                           |
-                   +---------------------------+
-                   |                           |
-                   |   pad word if necessary   | 0-1 words
-      sp+36+R+X+Y: |                           |
-                   +---------------------------+<- 8-byte boundary
-                   |                           |
-                   |   saved float reg args    | 0-16 words
+                   |    saved arg reg args     | 0-16 words int and dbl
         sp+36+R+X: |                           |
                    +---------------------------+<- 8-byte boundary
                    |                           |
-                   |      &-return space       | up to 8 words
+                   |      &-return space       | up to 8 words   TODO decipher this
           sp+36+R: |                           |
                    +---------------------------+<- 8-byte boundary
                    |                           |
@@ -2971,16 +2968,13 @@
             sp+36: |                           |
                    +---------------------------+
                    |                           |
-                   |   callee-save regs        | 10 words x19 .. x28   TODO only need ones we might clobber, right?
+                   |   callee-save regs        | 10 words x19 .. x28
+                   |                           |
                    +---------------------------+
              sp+8: |   saved lr (x30)          |
                    +---------------------------+
              sp+0: |   saved fp (x29)          | <- fp
                    +---------------------------+<- 16-byte boundary
-
-      X = 0 or 4 (depending on whether pad is present)
-      Y = int-reg-bytes
-      Z = float-reg-bytes
       |#
       (with-output-language (L13 Effect)
         (let ()
@@ -3019,172 +3013,120 @@
             (lambda (offset)
               (lambda (lvalue)
                 `(set! ,lvalue ,(%inline + ,%sp (immediate ,offset))))))
+          (define (make-vint) (vector %Carg1 %Carg2 %Carg3 %Carg4 %Carg5 %Carg6 %Carg7 %Carg8))
+          (define (make-vfp) (vector %Cfparg1 %Cfparg2 %Cfparg3 %Cfparg4 %Cfparg5 %Cfparg6 %Cfparg7 %Cfparg8))
           (define int-arg-reg-cnt 8)
           (define dbl-arg-reg-cnt 8)
-          ;; TODO deal with synthesize-first?
-          (define save-arg-regs
+          (define size-save-area
             (lambda (types synthesize-first?)
-              (let f ([types types] [iint (if synthesize-first? -1 0)] [idbl 0])
+              (let f ([types types] [iint (if synthesize-first? -1 0)] [idbl 0] [isp 0])
                 (if (null? types)
-                    (values iint idbl)
+                    isp
                     (nanopass-case (Ltype Type) (car types)
                       [(fp-double-float)
                        (if (fx< idbl dbl-arg-reg-cnt)
-                           (f (cdr types) iint (fx+ idbl 1))
-                           (f (cdr types) iint idbl))]
+                           (f (cdr types) iint (fx+ idbl 1) (fx+ isp 8))
+                           (f (cdr types) iint idbl isp))]
                       [(fp-single-float)
                        (if (fx< idbl dbl-arg-reg-cnt)
-                           (f (cdr types) iint (fx+ idbl 1))
-                           (f (cdr types) iint idbl))]
+                           (f (cdr types) iint (fx+ idbl 1) (fx+ isp 8))
+                           (f (cdr types) iint idbl isp))]
                       [(fp-ftd& ,ftd)
-                       (let* ([size ($ftd-size ftd)]
-                              [members ($ftd->members ftd)]
-                              [num-members (length members)])
-                         (cond
-                          [(and (fx<= num-members 4)
-                                (andmap double-member? members))
-                           ;; doubles are either in registers or all on stack
-                           (if (fx<= (fx+ idbl num-members) 8)
-                               (f (cdr types) iint (fx+ idbl num-members))
-                               ;; no more floating-point registers should be used, but ok if we count more
-                               (f (cdr types) iint idbl))]
-                          [(and (fx<= num-members 4)
-                                (andmap float-member? members))
-                           ;; floats are either in registers or all on stack
-                           (let ([amt (fxsrl (align 2 num-members) 1)])
-                             (if (fx<= (fx+ idbl amt) 8)
-                                 (f (cdr types) iint (+ idbl amt))
-                                 ;; no more floating-point registers should be used, but ok if we count more
-                                 (f (cdr types) iint idbl)))]
-                          [(fx= 8 ($ftd-alignment ftd))
-                           (f (cdr types) (fxmin 4 (fx+ (align 2 iint) (fxsrl size 2))) idbl)]
-                          [else
-                           (let ([size (align 4 size)])
-                             (f (cdr types) (fxmin 4 (fx+ iint (fxsrl size 2))) idbl))]))]
+                       (raise "TODO fp-ftd&")]
                       [else
-                       (f (cdr types) (if (fx< iint int-arg-reg-cnt) (fx+ iint 1) iint) idbl)])))))
+                       (if (fx< iint int-arg-reg-cnt)
+                           (f (cdr types) (fx+ iint 1) idbl (fx+ isp 8))
+                           (f (cdr types) iint idbl isp))])))))
+          (define save-arg-regs
+            (lambda (types vint vfp isp synthesize-first?)
+              (let f ([types types] [iint (if synthesize-first? -1 0)] [idbl 0] [isp isp])
+                (if (null? types)
+                    `(nop)
+                    (nanopass-case (Ltype Type) (car types)
+                      [(fp-double-float)
+                       (if (fx< idbl dbl-arg-reg-cnt)
+                           (%seq
+                            (inline ,(make-info-loadfl (vector-ref vfp idbl)) ,%store-double
+                              ,%sp ,%zero (immediate ,isp))
+                            ,(f (cdr types) iint (fx+ idbl 1) (fx+ isp 8)))
+                           (f (cdr types) iint idbl isp))]
+                      [(fp-single-float)
+                       (if (fx< idbl dbl-arg-reg-cnt)
+                           (%seq
+                            (inline ,(make-info-loadfl (vector-ref vfp idbl)) ,%store-single
+                              ,%sp ,%zero (immediate ,isp))
+                            ,(f (cdr types) iint (fx+ idbl 1) (fx+ isp 8)))
+                           (f (cdr types) iint idbl isp))]
+                      [(fp-ftd& ,ftd)
+                       (raise "TODO fp-ftd&")]
+                      [else
+                       (if (fx< iint int-arg-reg-cnt)
+                           (%seq
+                            (set! ,(%mref ,%sp ,isp) ,(vector-ref vint iint))
+                            ,(f (cdr types) (fx+ iint 1) idbl (fx+ isp 8)))
+                           (f (cdr types) iint idbl isp))])))))
           (define do-stack
-            ; all of the args are on the stack at this point, though not contiguous since
-            ; we push all of the int reg args with one push instruction and all of the
-            ; float reg args with another (v)push instruction; the saved int regs
-            ; continue on into the stack variables, which is convenient when a struct
-            ; argument is split across registers and the stack
-            (lambda (types saved-reg-bytes pre-pad-bytes return-bytes float-reg-bytes post-pad-bytes int-reg-bytes
-                           synthesize-first?)
-              (let* ([return-space-offset (fx+ saved-reg-bytes pre-pad-bytes)]
-                     [float-reg-offset (fx+ return-space-offset return-bytes)]
-                     [int-reg-offset (fx+ float-reg-offset float-reg-bytes post-pad-bytes)]
-                     [stack-arg-offset (fx+ int-reg-offset int-reg-bytes)])
-                (let loop ([types (if synthesize-first? (cdr types) types)]
-                           [locs '()]
-                           [iint 0]
-                           [idbl 0]
-                           [bsgl-offset #f]
-                           [int-reg-offset int-reg-offset]
-                           [float-reg-offset float-reg-offset]
-                           [stack-arg-offset stack-arg-offset])
-                  (if (null? types)
-                      (let ([locs (reverse locs)])
-                        (if synthesize-first?
-                            (cons (load-stack-address return-space-offset)
-                                  locs)
-                            locs))
-                      (nanopass-case (Ltype Type) (car types)
-                        [(fp-double-float)
-                         (if (< idbl 8)
-                             (loop (cdr types)
-                               (cons (load-double-stack float-reg-offset) locs)
-                               iint (fx+ idbl 1) bsgl-offset int-reg-offset (fx+ float-reg-offset 8) stack-arg-offset)
-                             (let ([stack-arg-offset (align 8 stack-arg-offset)])
-                               (loop (cdr types)
-                                 (cons (load-double-stack stack-arg-offset) locs)
-                                 iint 8 #f int-reg-offset float-reg-offset (fx+ stack-arg-offset 8))))]
-                        [(fp-single-float)
-                         (if bsgl-offset
-                             (loop (cdr types)
-                               (cons (load-single-stack bsgl-offset) locs)
-                               iint idbl #f int-reg-offset float-reg-offset stack-arg-offset)
-                             (if (< idbl 8)
-                                 (loop (cdr types)
-                                   ; with big-endian ARM might need to adjust offset +/- 4 since pair of
-                                   ; single floats in a pushed double float might be reversed
-                                   (cons (load-single-stack float-reg-offset) locs)
-                                   iint (fx+ idbl 1) (fx+ float-reg-offset 4) int-reg-offset (fx+ float-reg-offset 8) stack-arg-offset)
-                                 (loop (cdr types)
-                                   (cons (load-single-stack stack-arg-offset) locs)
-                                   iint 8 #f int-reg-offset float-reg-offset (fx+ stack-arg-offset 4))))]
-                        [(fp-ftd& ,ftd)
-                         (let* ([size ($ftd-size ftd)]
-                                [members ($ftd->members ftd)]
-                                [num-members (length members)])
-                           (cond
-                            [(and (fx<= num-members 4)
-                                  (andmap double-member? members))
-                             ;; doubles are either in registers or all on stack
-                             (if (fx<= (fx+ idbl num-members) 8)
-                                 (loop (cdr types)
-                                   (cons (load-stack-address float-reg-offset) locs)
-                                   iint (fx+ idbl num-members) #f int-reg-offset (fx+ float-reg-offset size) stack-arg-offset)
-                                 (let ([stack-arg-offset (align 8 stack-arg-offset)])
-                                   (loop (cdr types)
-                                     (cons (load-stack-address stack-arg-offset) locs)
-                                     iint 8 #f int-reg-offset #f (fx+ stack-arg-offset size))))]
-                            [(and (fx<= num-members 4)
-                                  (andmap float-member? members))
-                             ;; floats are either in registers or all on stack
-                             (let ([amt (fxsrl (align 2 (fx- num-members (if bsgl-offset 1 0))) 1)])
-                               (if (fx<= (fx+ idbl amt) 8)
-                                   (let ([odd-floats? (fxodd? num-members)])
-                                     (if bsgl-offset
-                                         (let ([dbl-size (align 8 (fx- size 4))])
-                                           (loop (cdr types)
-                                             (cons (load-stack-address bsgl-offset) locs)
-                                             iint (fx+ idbl amt) (if odd-floats? #f (+ bsgl-offset size)) int-reg-offset
-                                             (fx+ float-reg-offset dbl-size) stack-arg-offset))
-                                         (let ([dbl-size (align 8 size)])
-                                           (loop (cdr types)
-                                             (cons (load-stack-address float-reg-offset) locs)
-                                             iint (fx+ idbl amt) (and odd-floats? (fx+ float-reg-offset size)) int-reg-offset
-                                             (fx+ float-reg-offset dbl-size) stack-arg-offset))))
-                                   (loop (cdr types)
-                                     (cons (load-stack-address stack-arg-offset) locs)
-                                     iint 8 #f int-reg-offset float-reg-offset (fx+ stack-arg-offset size))))]
-                            [(fx= 8 ($ftd-alignment ftd))
-                             (let ([int-reg-offset (if (fxeven? iint) int-reg-offset (fx+ int-reg-offset 4))]
-                                   [iint (align 2 iint)]
-                                   [amt (fxsrl size 2)])
-                               (if (fx< iint 4) ; argument starts in registers, may continue on stack
-                                   (loop (cdr types)
-                                     (cons (load-stack-address int-reg-offset) locs)
-                                     (fxmin 4 (fx+ iint amt)) idbl bsgl-offset (fx+ int-reg-offset size) float-reg-offset
-                                     (fx+ stack-arg-offset (fxmax 0 (fx* 4 (fx- (fx+ iint amt) 4)))))
-                                   (let ([stack-arg-offset (align 8 stack-arg-offset)])
-                                     (loop (cdr types)
-                                       (cons (load-stack-address stack-arg-offset) locs)
-                                       iint idbl bsgl-offset int-reg-offset float-reg-offset (fx+ stack-arg-offset size)))))]
-                            [else
-                             (let* ([size (align 4 size)]
-                                    [amt (fxsrl size 2)])
-                               (if (fx< iint 4) ; argument starts in registers, may continue on stack
-                                   (loop (cdr types)
-                                     (cons (load-stack-address int-reg-offset) locs)
-                                     (fxmin 4 (fx+ iint amt)) idbl bsgl-offset (fx+ int-reg-offset size) float-reg-offset
-                                     (fx+ stack-arg-offset (fxmax 0 (fx* 4 (fx- (fx+ iint amt) 4)))))
-                                   (loop (cdr types)
-                                     (cons (load-stack-address stack-arg-offset) locs)
-                                     iint idbl bsgl-offset int-reg-offset float-reg-offset (fx+ stack-arg-offset size))))]))]
-                        [else
-                         (if (fx= iint 4)
-                             (loop (cdr types)
-                               (cons (load-int-stack (car types) stack-arg-offset) locs)
-                               iint idbl bsgl-offset int-reg-offset float-reg-offset (fx+ stack-arg-offset 4))
-                             (loop (cdr types)
-                               (cons (load-int-stack (car types) int-reg-offset) locs)
-                               (fx+ iint 1) idbl bsgl-offset (fx+ int-reg-offset 4) float-reg-offset stack-arg-offset))]))))))
+            (lambda (types risp sisp synthesize-first?) ;; TODO deal with synthesize-first?
+              ; risp is where incoming register args are stored
+              ; sisp is where incoming stack args are stored
+              (let f ([types types]
+                      [locs '()]
+                      [iint 0]
+                      [idbl 0]
+                      [risp risp]
+                      [sisp sisp])
+                (if (null? types)
+                    (reverse locs)
+                    (nanopass-case (Ltype Type) (car types)
+                      [(fp-double-float)
+                       (if (= idbl dbl-arg-reg-cnt)
+                           (f (cdr types)
+                             (cons (load-double-stack sisp) locs)
+                             iint idbl risp (fx+ sisp 8))
+                           (f (cdr types)
+                             (cons (load-double-stack risp) locs)
+                             iint (fx+ idbl 1) (fx+ risp 8) sisp))]
+                      [(fp-single-float)
+                       (if (= idbl dbl-arg-reg-cnt)
+                           (f (cdr types)
+                             (cons (load-single-stack sisp) locs)
+                             iint idbl risp (fx+ sisp 8))
+                           (f (cdr types)
+                             (cons (load-single-stack risp) locs)
+                             iint (fx+ idbl 1) (fx+ risp 8) sisp))]
+                      [(fp-ftd& ,ftd)
+                       (raise "TODO fp-ftd&")
+                       #;
+                       (let* ([classes (classify-eightbytes ftd)]
+                              [ints (count 'integer classes)]
+                              [fps (count 'sse classes)])
+                         (cond
+                          [(pass-here-by-stack? classes iint ints idbl fps)
+                           ;; receive on the stack
+                           (f (cdr types)
+                             (cons (load-stack-address sisp) locs)
+                             iint idbl risp (fx+ sisp ($ftd-size ftd)))]
+                          [else
+                           ;; receive via registers; `save-args-regs` has saved
+                           ;; the registers in a suitable order so that the data
+                           ;; is contiguous on the stack
+                           (f (cdr types)
+                             (cons (load-stack-address risp) locs)
+                             (fx+ iint ints) (fx+ idbl fps) (fx+ risp (fx* 8 (fx+ ints fps))) sisp)]))]
+                      [else
+                       (if (= iint int-arg-reg-cnt)
+                           (f (cdr types)
+                             (cons (load-int-stack (car types) sisp) locs)
+                             iint idbl risp (fx+ sisp 8))
+                           (f (cdr types)
+                             (cons (load-int-stack (car types) risp) locs)
+                             (fx+ iint 1) idbl (fx+ risp 8) sisp))])))))
           (define do-result
             (lambda (result-type synthesize-first? return-stack-offset)
               (nanopass-case (Ltype Type) result-type
                 [(fp-ftd& ,ftd)
+                 (raise "TODO deal with fp-ftd&")
+                 #;
                  (let* ([members ($ftd->members ftd)]
                         [num-members (length members)])
                    (cond
@@ -3240,56 +3182,61 @@
                          0)]
                 [else
                  (values (lambda (x)
-                             `(set! ,%Cretval ,x))
-                           (list %Cretval %r1)
-                           0)])))
+                           `(set! ,%Cretval ,x))
+                         (list %Cretval %r1)
+                         0)])))
+          (define save-regs
+            (lambda (regs offset)
+              (if (null? regs)
+                  `(nop)
+                  `(seq
+                    (set! ,(%mref ,%sp ,offset) ,(car regs))
+                    ,(save-regs (cdr regs) (fx+ offset 8))))))
+          (define restore-regs
+            (lambda (regs offset)
+              (if (null? regs)
+                  `(nop)
+                  `(seq
+                    (set! ,(car regs) ,(%mref ,%sp ,offset))
+                    ,(restore-regs (cdr regs) (fx+ offset 8))))))
           (lambda (info)
-            (define callee-save-regs (list %r19 %r20 %r21 %r22 %r23 %r24 %r25 %r26 %r27 %r28))
-            (define isaved (+ 2 (length callee-save-regs))) ;; +2 for %fp and %lr
+            (define fp+lr+callee-save-regs (list %fp %lr %r19 %r20 %r21 %r22 %r23 %r24 %r25 %r26 %r27 %r28))
             (let* ([arg-type* (info-foreign-arg-type* info)]
                    [result-type (info-foreign-result-type info)]
-                   [synthesize-first? (indirect-result-that-fits-in-registers? result-type)])
-              (let-values ([(iint idbl) (count-reg-args arg-type* synthesize-first?)])
-                (let ([saved-reg-bytes (fx* isaved 8)]
-                      [pre-pad-bytes (if (fxeven? isaved) 0 8)]
-                      [int-reg-bytes (fx* iint 8)]
-                      [post-pad-bytes (if (fxeven? iint) 0 8)]
-                      [float-reg-bytes (fx* idbl 8)])
-                  (let-values ([(get-result result-regs return-bytes) (do-result result-type synthesize-first?
-                                                                        (fx+ saved-reg-bytes pre-pad-bytes))])
-                    (let ([return-bytes (align 8 return-bytes)])
-                      (define (c-init)
+                   [synthesize-first? (indirect-result-that-fits-in-registers? result-type)]
+                   [saved-reg-bytes (size-save-area arg-type* synthesize-first?)]
+                   [callee-save-bytes (* 8 (length fp+lr+callee-save-regs))]
+                   [risp (align 16 callee-save-bytes)]
+                   [frame-size (align 16 (+ saved-reg-bytes callee-save-bytes))])
+              (let-values ([(get-result result-regs return-bytes) (do-result result-type synthesize-first?
+                                                                    "TODO make room for this")])
+                (let ([return-bytes (align 16 return-bytes)])
+                  (define (c-init)
+                    (%seq
+                     (set! ,%sp ,(%inline - ,%sp (immediate frame-size)))
+                     ; save argument register values to the stack so we don't lose the values
+                     ; across possible calls to C while setting up the tc and allocating memory
+                     ,(save-arg-regs arg-type* (make-vint) (make-vfp) risp synthesize-first?)
+                     ; save the callee save registers
+                     ,(save-regs fp+lr+callee-save-regs 0)
+                     ; set up tc for benefit of argument-conversion code, which might allocate
+                     ,(if-feature pthreads
                         (%seq
-                          ; save argument register values to the stack so we don't lose the values
-                          ; across possible calls to C while setting up the tc and allocating memory
-                          ,(save-arg-regs arg-type*)
-                          ; pad if necessary to force 8-byte boundary, and make room for indirect return:
-                          ,(let ([len (+ post-pad-bytes return-bytes)])
-                             (if (fx= len 0) `(nop) `(set! ,%sp ,(%inline - ,%sp (immediate ,len)))))
-                          ,(if (fx= idbl 0) `(nop) `(inline ,(make-info-vpush %Cfparg1 idbl) ,%vpush-multiple))
-                          ; pad if necessary to force 8-byte boundardy after saving callee-save-regs
-                          ,(if (fx= pre-pad-bytes 0) `(nop) `(set! ,%sp ,(%inline - ,%sp (immediate 4))))
-                          ; save the callee save registers & return address
-                          (inline ,(make-info-kill*-live* '() callee-save-regs) ,%push-multiple)
-                          ; set up tc for benefit of argument-conversion code, which might allocate
-                          ,(if-feature pthreads
-                             (%seq
-                               (set! ,%r0 ,(%inline get-tc))
-                               (set! ,%tc ,%r0))
-                             `(set! ,%tc (literal ,(make-info-literal #f 'entry (lookup-c-entry thread-context) 0))))))
-                      (define c-args
-                        ; list of procedures that marshal arguments from their C stack locations
-                        ; to the Scheme argument locations
-                        (do-stack arg-type* saved-reg-bytes pre-pad-bytes return-bytes float-reg-bytes post-pad-bytes int-reg-bytes
-                          synthesize-first?))
-                      (define (c-return)
-                        (in-context Tail
-                          (%seq
-                            ; restore the callee save registers
-                            (inline ,(make-info-kill* callee-save-regs+lr) ,%pop-multiple)
-                            ; deallocate space for pad & arg reg values
-                            (set! ,%sp ,(%inline + ,%sp (immediate ,(fx+ pre-pad-bytes int-reg-bytes post-pad-bytes float-reg-bytes))))
-                            ; done
-                            (asm-c-return ,null-info ,callee-save-regs+lr ... ,result-regs ...))))
-                      (values c-init c-args get-result c-return)))))))))))
+                         (set! ,%r0 ,(%inline get-tc))
+                         (set! ,%tc ,%r0))
+                        `(set! ,%tc (literal ,(make-info-literal #f 'entry (lookup-c-entry thread-context) 0))))))
+                  (define c-args
+                    ; list of procedures that marshal arguments from their C stack locations
+                    ; to the Scheme argument locations
+                    (do-stack arg-type* risp frame-size synthesize-first?))
+                  (define (c-return)
+                    (in-context Tail
+                      (%seq
+                       ; restore the callee save registers
+                       ,(restore-regs fp+lr+callee-save-regs 0)
+                       ; deallocate space for pad & arg reg values
+                       (set! ,%sp ,(%inline + ,%sp (immediate ,frame-size)))
+                       ; done
+                       (asm-c-return ,null-info ,fp+lr+callee-save-regs ... ,result-regs ...))))
+                  (values c-init c-args get-result c-return)))))))))
 )
