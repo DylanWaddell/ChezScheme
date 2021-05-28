@@ -1327,7 +1327,7 @@
         [26 #b1]
         [24 #b01]
         [22 opc]
-        [10 (fxlogand #xfff pimm12)] ; scaled by 8
+        [10 (fxlogand #xfff pimm12)] ; scaled for size: 4 for 32-bit, 8 for 64-bit, 16 for 128-bit
         [5 (ax-ea-reg-code base)]
         [0 (reg-mdinfo dest)])))
 
@@ -2054,10 +2054,10 @@
         (Trivit (base offset)
           (case op
             [(load-single->double)
-              (emit fldri.sgl %flreg2 base (ax-imm-data offset)
+              (emit fldri.sgl %flreg2 base (fx/ (ax-imm-data offset) 4)
                 (emit fcvt.sgl->dbl flreg %flreg2 code*))]
             [(load-double->single)
-             (emit fldri.dbl %flreg2 base (ax-imm-data offset)
+             (emit fldri.dbl %flreg2 base (fx/ (ax-imm-data offset) 8)
                (emit fcvt.dbl->sgl flreg %flreg2 code*))]
             [else (sorry! who "unrecognized op ~s" op)])))))
 
@@ -2068,7 +2068,7 @@
           (case op
             [(store-single->double)
              (emit fcvt.sgl->dbl %flreg2 flreg
-               (emit fstri.dbl %flreg2 base (ax-imm-data offset) code*))]
+               (emit fstri.dbl %flreg2 base (fx/ (ax-imm-data offset) 8) code*))]
             [else (sorry! who "unrecognized op ~s" op)])))))
 
   (define-who asm-fl-load/store
@@ -3211,7 +3211,7 @@
                 (let ([return-bytes (align 16 return-bytes)])
                   (define (c-init)
                     (%seq
-                     (set! ,%sp ,(%inline - ,%sp (immediate frame-size)))
+                     (set! ,%sp ,(%inline - ,%sp (immediate ,frame-size)))
                      ; save argument register values to the stack so we don't lose the values
                      ; across possible calls to C while setting up the tc and allocating memory
                      ,(save-arg-regs arg-type* (make-vint) (make-vfp) risp synthesize-first?)
