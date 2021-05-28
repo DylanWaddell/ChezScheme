@@ -36,7 +36,7 @@
 (define-constant max-float-alignment 16)
 (define-constant max-integer-alignment 16)
 
-(define-constant asm-arg-reg-max 12)
+(define-constant asm-arg-reg-max 13)
 (define-constant asm-arg-reg-cnt 8)
 
 (define-constant typedef-ptr "void *")

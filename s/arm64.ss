@@ -64,6 +64,7 @@
     [    %r13                   #f 13]
     [    %r14                   #f 14]
     [    %r15                   #f 15]
+    [%lr                        #f 30] ;; in allocable for sake of make-restricted-unspillable
   )
   (machine-dependent
     [%sp                            #t 31]
@@ -78,7 +79,6 @@
     [%flreg1                  %d16  #f 16]
     [%flreg2                  %d17  #f 17]
     [%fp                            #t 29]
-    [%lr                            #t 30]
     [%zeroreg                 %x31  #f 31]
     ))
 
@@ -766,7 +766,7 @@
                 (seq
                   `(set! ,(make-live-info) ,u (asm ,null-info ,(asm-add #f) ,x ,y))
                   (add-offset u)))))))
-    ; NB: compiler ipmlements init-lock! and unlock! as 32-bit store of zero
+    ; NB: compiler implements init-lock! and unlock! as 64-bit store of zero
     (define-instruction pred (lock!)
       [(op (x ur) (y ur) (w unsigned12))
        (let ([u (make-tmp 'u)])

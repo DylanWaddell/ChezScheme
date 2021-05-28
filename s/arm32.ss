@@ -825,7 +825,7 @@
                 (seq
                   `(set! ,(make-live-info) ,u (asm ,null-info ,(asm-add #f) ,x ,y))
                   (add-offset u)))))))
-    ; NB: compiler ipmlements init-lock! and unlock! as 32-bit store of zero 
+    ; NB: compiler implements init-lock! and unlock! as 32-bit store of zero
     (define-instruction pred (lock!)
       [(op (x ur) (y ur) (w funky12))
        (let ([u (make-tmp 'u)])
