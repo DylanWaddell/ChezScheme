@@ -2187,8 +2187,6 @@
               [(integer-64 unsigned-64) (emit rev dest src code*)]
               [else (sorry! who "unexpected asm-swap type argument ~s" type)]))))))
 
-
-  ; TODO needs testing
   (define asm-lock
     ;  tmp = ldxr src
     ;  cmp tmp, 0
@@ -2200,7 +2198,7 @@
       (Trivit (src tmp)
         (emit ldxr tmp src
           (emit cmpi tmp 0
-            (emit bnei 2
+            (emit bnei 3
               (emit movi tmp 1
                 (emit stxr tmp tmp src code*))))))))
 
