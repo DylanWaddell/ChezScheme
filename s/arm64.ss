@@ -666,14 +666,16 @@
          `(set! ,(make-live-info) ,x ,u)))])
 
   (define-instruction value (read-time-stamp-counter)
-    [(op (z ur)) `(set! ,(make-live-info) ,z (asm ,null-info ,(asm-read-counter 1)))])
+    [(op (z ur))
+     `(set! ,(make-live-info) ,z (asm ,null-info ,asm-read-time-stamp))])
 
+  ;; TODO unimplemented
   (define-instruction value (read-performance-monitoring-counter)
     [(op (z ur) (x unsigned8))
      ; could require unsigned1 and skip the fxmin...but no point burdening instruction scheduler with an additional one-off type
      (let ([imm (nanopass-case (L15d Triv) x [(immediate ,imm) (fxmin imm 1)])])
-       `(set! ,(make-live-info) ,z (asm ,null-info ,(asm-read-counter (fx+ imm 2)))))]
-    [(op (z ur) (x ur)) `(set! ,(make-live-info) ,z (asm ,null-info ,(asm-read-counter) ,x))])
+       `(set! ,(make-live-info) ,z ,%zeroreg))]
+    [(op (z ur) (x ur)) `(set! ,(make-live-info) ,z ,%zeroreg)])
 
   ;; no kills since we expect to be called when all necessary state has already been saved
   (define-instruction value (get-tc)
@@ -848,6 +850,7 @@
                      asm-save-flrv asm-restore-flrv asm-return asm-c-return asm-size
                      asm-enter asm-foreign-call asm-foreign-callable
                      asm-read-counter
+                     asm-read-time-stamp
                      asm-inc-cc-counter
                      shift-count? unsigned8? unsigned12?
                      ; threaded version specific
@@ -1535,7 +1538,19 @@
   (define-op rev32 rev-op #b10)
   (define-op rev16 rev-op #b01)
 
-  (define-op mrc mrc/mcr-op #b1)
+  ;; TODO inline cases like this that have just one use
+  (define-op mrs
+    (lambda (mneu op0 op1 CRn CRm op2 dest-ea code*)
+      (emit-code (mneu dest-ea op0 op1 CRn CRm op2 code*)
+        [22 #b1101010100]
+        [21 #b1]
+        [20 #b1]
+        [19 (if (fx= op0 3) #b1 #b0)]
+        [16 op1]
+        [12 CRn]
+        [8  CRm]
+        [5  op2]
+        [0  (ax-ea-reg-code dest-ea)])))
 
    ; float ops
   (define-op flop
@@ -1711,20 +1726,6 @@
         [5 (fxlogand #x7ffff imm19)]
         [4 0]
         [0 cond-bits])))
-
-  (define-who mrc/mcr-op
-    (lambda (op dir cond coproc opc1 dest-ea CRn CRm opc2 code*)
-      (emit-code (op cond coproc opc1 dest-ea CRn CRm opc2 code*) ; encoding A1
-        [22 #b1101010100]
-        [21 #b0]        ; result?
-        [19 #b01]
-        [16 opc1]
-        [12 CRn]
-        [8  CRm]
-        [5  opc2]
-        [0  (ax-ea-reg-code dest-ea)])))
-
-
 
   ; Unprocessed
 
@@ -2296,14 +2297,26 @@
         (emit fldri.dbl %Cfpretval sp 0
           (emit addi #f sp sp 16 code*)))))
 
+  (define asm-read-time-stamp
+    (lambda (code* dest)
+      ;; TODO guessing we want to read CNTHP_TVAL_EL2
+      ;;      op0  op1   CRn    CRm    op2
+      ;;      #b11 #b100 #b1110 #b0010 #b000
+      (Trivit (dest)
+        (emit mrs #b11 #b100 #b1110 #b0010 #b010 dest code*))))
+
   (define asm-read-counter
     (case-lambda
       [(k)
        (lambda (code* dest)
+         (raise "TODO asm-read-counter")
+         #;
          (Trivit (dest)
            (emit mrc 'al 15 0 dest 15 12 k code*)))]
       [()
        (lambda (code* dest src)
+         (raise "TODO asm-read-counter")
+         #;
          (Trivit (dest src)
            (emit cmpi src 0
              ; may need ISB instruction here
