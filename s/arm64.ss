@@ -2616,21 +2616,11 @@
   (define-who asm-inc-cc-counter
     (lambda (code* addr val tmp)
       (Trivit (addr val tmp)
-        (define do-ldr
-          (lambda (offset k code*)
-            (emit ldur tmp addr offset (k (emit stur tmp addr offset code*)))))
-        (define do-add/cc
-          (lambda (code*)
+        (emit ldur tmp addr 0
+          (let ([code* (emit stur tmp addr 0 code*)])
             (record-case val
-              [(imm) (n) (emit addi #t tmp tmp n code*)]
-              [else (emit add #t tmp tmp val code*)])))
-        (do-ldr 0
-          do-add/cc
-          (emit bnei 2
-            (do-ldr 4
-              (lambda (code*)
-                (emit addi #f tmp tmp 1 code*))
-              code*))))))
+              [(imm) (n) (emit addi #f tmp tmp n code*)]
+              [else (emit add #f tmp tmp val code*)]))))))
 
   (module (asm-foreign-call asm-foreign-callable)
     (define align (lambda (b x) (let ([k (- b 1)]) (fxlogand (fx+ x k) (fxlognot k)))))
