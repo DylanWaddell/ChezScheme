@@ -966,6 +966,7 @@
               (cons-bits 16
                 (cons-bits 0 '())))))))
 
+  ;; TODO rename to something like select-immediate-op
   (define-syntax dynamic-reference
     (syntax-rules ()
       [(_ unscaled unsigned register register-shifted)
@@ -978,15 +979,15 @@
                  (emit op src/dest breg ireg code*))]))
           (define dynamic-helper
             (lambda (emit-op n src/dest breg code*)
-              (let ([code* (emit-op src/dest `(reg . ,breg) `(reg . ,%ratmp) code*)])
+              (let ([code* (emit-op src/dest breg `(reg . ,%ratmp) code*)])
                    (if (> n 0)
                        (emit movi `(reg . ,%ratmp) n code*)
                        (emit movn `(reg . ,%ratmp) (lognot n) 0 code*)))))
           (cond
             [(signed9? n)
-              (emit unscaled src/dest `(reg . ,breg) n code*)]
+              (emit unscaled src/dest breg n code*)]
             [(and (fx= (fxlogand n 7) 0) (unsigned12? (fx/ n 8)))
-              (emit unsigned src/dest `(reg . ,breg) (fx/ n 8) code*)]
+              (emit unsigned src/dest breg (fx/ n 8) code*)]
             [(and (fx= (fxlogand n 7) 0) (imm16? (fx/ n 8)))
               (dynamic-helper (make-emit register-shifted) (fx/ n 8) src/dest breg code*)]
             [(imm16? n)
@@ -1954,7 +1955,7 @@
               (ax-mov64 dest 0
                 (asm-helper-relocation code* (cons 'arm64-abs stuff)))]
              [(disp) (n breg)
-              (ldri-dynamic dest breg n code*)]
+              (ldri-dynamic dest `(reg . ,breg) n code*)]
              [(index) (n ireg breg)
               (safe-assert (eqv? n 0))
               (emit ldr dest `(reg . ,breg) `(reg . ,ireg) code*)]
@@ -1962,7 +1963,7 @@
           [(ax-reg? src)
            (record-case dest
              [(disp) (n breg)
-              (stri-dynamic src breg n code*)]
+              (stri-dynamic src `(reg . ,breg) n code*)]
              [(index) (n ireg breg)
               (safe-assert (eqv? n 0))
               (emit str src `(reg . ,breg) `(reg . ,ireg) code*)]
@@ -2077,10 +2078,10 @@
         (Trivit (offset)
           (let ([offset (ax-imm-data offset)])
             (case op
-              [(load-single) (fldri-dynamic.sgl flreg base offset code*)]
-              [(load-double) (fldri-dynamic.dbl flreg base offset code*)]
-              [(store-single) (fstri-dynamic.sgl flreg base offset code*)]
-              [(store-double) (fstri-dynamic.dbl flreg base offset code*)]
+              [(load-single) (fldri-dynamic.sgl flreg `(reg . ,base) offset code*)]
+              [(load-double) (fldri-dynamic.dbl flreg `(reg . ,base) offset code*)]
+              [(store-single) (fstri-dynamic.sgl flreg `(reg . ,base) offset code*)]
+              [(store-double) (fstri-dynamic.dbl flreg `(reg . ,base) offset code*)]
               [else (sorry! who "unrecognized op ~s" op)]))))))
 
   (define-who asm-load
@@ -2094,7 +2095,7 @@
               (cond
                 [(eq? index %zero)
                   (case type
-                    [(integer-64 unsigned-64) (emit ldur dest base n code*)]
+                    [(integer-64 unsigned-64) (ldri-dynamic dest base n code*)] ;; TODO will have to do this for the others as well!
                     [(integer-32)  (emit ldursw dest base n code*)]
                     [(unsigned-32) (emit ldurw dest base n code*)]
                     [(integer-16)  (emit ldursh dest base n code*)]
@@ -2126,7 +2127,7 @@
               (cond
                 [(eq? index %zero)
                   (case type
-                    [(integer-64 unsigned-64) (emit stur  src base n code*)]
+                    [(integer-64 unsigned-64) (stri-dynamic src base n code*)] ;; TODO will have to do this for the others as well
                     [(integer-32 unsigned-32) (emit sturw src base n code*)]
                     [(integer-16 unsigned-16) (emit sturh src base n code*)]
                     [(integer-8  unsigned-8)  (emit sturb src base n code*)]
