@@ -989,6 +989,7 @@
           (cond
             [(signed9? n)
               (emit unscaled src/dest breg n code*)]
+            ;; TODO generalize the shift handling here for the imm12  case, e.g., for 32-bit it's shift by 4
             [(and (fx= (fxlogand n 7) 0) (unsigned12? (fx/ n 8)))
               (emit unsigned src/dest breg (fx/ n 8) code*)]
             [(and (fx= (fxlogand n 7) 0) (imm16? (fx/ n 8)))
@@ -999,6 +1000,8 @@
 
   (define ldri-dynamic  (dynamic-reference ldur ldri ldr ldrs))
   (define stri-dynamic  (dynamic-reference stur stri str strs))
+
+  (define ldrswi-dynamic (dynamic-reference ldursw ldrswi ldrsw ldrss))
 
   (define fldri-dynamic.dbl (dynamic-reference fldur.dbl fldri.dbl fldr.dbl fldrs.dbl))
   (define fstri-dynamic.dbl (dynamic-reference fstur.dbl fstri.dbl fstr.dbl fstrs.dbl))
@@ -1237,6 +1240,7 @@
   (define-op ldrsw   ldr/str-reg-op      #b10 #b10 #b111 #b0)
   (define-op strw    ldr/str-reg-op      #b10 #b00 #b111 #b0)
 
+  (define-op ldrswi  ldr/str-imm-op      #b10 #b10)  ;; TODO LEFT OFF HERE see p C6.2.144
   (define-op ldurw   ldur/stur-imm-op    #b10 #b01)
   (define-op ldursw  ldur/stur-imm-op    #b10 #b10)
   (define-op sturw   ldur/stur-imm-op    #b10 #b00)
