@@ -565,6 +565,12 @@
                                   (patch-exec-path *mats-dir*) testfile.so testfile.c))]
                        [(arm32le tarm32le)
                         (system (format "cc -fPIC -shared -o ~a ~a" testfile.so testfile.c))]
+                       [(arm64le)
+                        ;; TODO clean up and generalize to other cases: use the CC folks configured in Mf-config
+                        (let ([cmdline (format "env $(grep CC= ~a/../c/Mf-config) bash -c '${CC} -fPIC -shared -o ~a ~a'"
+                                         *mats-dir* testfile.so testfile.c)])
+                          (pretty-print cmdline)
+                          (system cmdline))]
                        [else ; this should work for most intel-based systems that use gcc...
                         (if (> (fixnum-width) 32)
                             (system (format "cc -m64 -fPIC -shared -o ~a ~a" testfile.so testfile.c))
