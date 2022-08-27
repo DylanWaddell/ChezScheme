@@ -969,11 +969,10 @@
               (cons-bits 16
                 (cons-bits 0 '())))))))
 
-  ;; TODO rename to something like select-immediate-op
-  (define-syntax dynamic-reference
+  (define-syntax handle-immediate-offset
     (syntax-rules ()
       [(_ unscaled-imm unsigned-imm register register-shifted)
-       (dynamic-reference unscaled-imm unsigned-imm register register-shifted 3)]
+       (handle-immediate-offset unscaled-imm unsigned-imm register register-shifted 3)]
       [(_ unscaled-imm unsigned-imm register register-shifted shift-count)
         (lambda (src/dest breg n code*)
           (define (bad!) (sorry! "dynamic load/store error with src/dest ~s and breg ~s" src/dest breg))
@@ -1002,16 +1001,16 @@
               (dynamic-helper (make-emit register) n src/dest breg code*)]
             [else (bad!)]))]))
 
-  (define ldri-dynamic  (dynamic-reference ldur ldri ldr ldrs))
-  (define stri-dynamic  (dynamic-reference stur stri str strs))
+  (define ldri-helper  (handle-immediate-offset ldur ldri ldr ldrs))
+  (define stri-helper  (handle-immediate-offset stur stri str strs))
 
-  (define ldrswi-dynamic (dynamic-reference ldursw ldrswi ldrsw ldrsws 2))
+  (define ldrswi-helper (handle-immediate-offset ldursw ldrswi ldrsw ldrsws 2))
 
-  (define fldri-dynamic.dbl (dynamic-reference fldur.dbl fldri.dbl fldr.dbl fldrs.dbl))
-  (define fstri-dynamic.dbl (dynamic-reference fstur.dbl fstri.dbl fstr.dbl fstrs.dbl))
+  (define fldri-helper.dbl (handle-immediate-offset fldur.dbl fldri.dbl fldr.dbl fldrs.dbl))
+  (define fstri-helper.dbl (handle-immediate-offset fstur.dbl fstri.dbl fstr.dbl fstrs.dbl))
 
-  (define fldri-dynamic.sgl (dynamic-reference fldur.sgl fldri.sgl fldr.sgl fldrs.sgl))
-  (define fstri-dynamic.sgl (dynamic-reference fstur.sgl fstri.sgl fstr.sgl fstrs.sgl))
+  (define fldri-helper.sgl (handle-immediate-offset fldur.sgl fldri.sgl fldr.sgl fldrs.sgl))
+  (define fstri-helper.sgl (handle-immediate-offset fstur.sgl fstri.sgl fstr.sgl fstrs.sgl))
 
 
   ; move immidiate
@@ -1965,7 +1964,7 @@
               (ax-mov64 dest 0
                 (asm-helper-relocation code* (cons 'arm64-abs stuff)))]
              [(disp) (n breg)
-              (ldri-dynamic dest `(reg . ,breg) n code*)]
+              (ldri-helper dest `(reg . ,breg) n code*)]
              [(index) (n ireg breg)
               (safe-assert (eqv? n 0))
               (emit ldr dest `(reg . ,breg) `(reg . ,ireg) code*)]
@@ -1973,7 +1972,7 @@
           [(ax-reg? src)
            (record-case dest
              [(disp) (n breg)
-              (stri-dynamic src `(reg . ,breg) n code*)]
+              (stri-helper src `(reg . ,breg) n code*)]
              [(index) (n ireg breg)
               (safe-assert (eqv? n 0))
               (emit str src `(reg . ,breg) `(reg . ,ireg) code*)]
@@ -2088,10 +2087,10 @@
         (Trivit (offset)
           (let ([offset (ax-imm-data offset)])
             (case op
-              [(load-single) (fldri-dynamic.sgl flreg `(reg . ,base) offset code*)]
-              [(load-double) (fldri-dynamic.dbl flreg `(reg . ,base) offset code*)]
-              [(store-single) (fstri-dynamic.sgl flreg `(reg . ,base) offset code*)]
-              [(store-double) (fstri-dynamic.dbl flreg `(reg . ,base) offset code*)]
+              [(load-single) (fldri-helper.sgl flreg `(reg . ,base) offset code*)]
+              [(load-double) (fldri-helper.dbl flreg `(reg . ,base) offset code*)]
+              [(store-single) (fstri-helper.sgl flreg `(reg . ,base) offset code*)]
+              [(store-double) (fstri-helper.dbl flreg `(reg . ,base) offset code*)]
               [else (sorry! who "unrecognized op ~s" op)]))))))
 
   (define-who asm-load
@@ -2105,8 +2104,8 @@
               (cond
                 [(eq? index %zero)
                   (case type
-                    [(integer-64 unsigned-64) (ldri-dynamic dest base n code*)]
-                    [(integer-32)  (ldrswi-dynamic dest base n code*)]
+                    [(integer-64 unsigned-64) (ldri-helper dest base n code*)]
+                    [(integer-32)  (ldrswi-helper dest base n code*)]
                     [(unsigned-32) (emit ldurw dest base n code*)]  ;; TODO will have to do adapt for imm range limitations for the others as well!
                     [(integer-16)  (emit ldursh dest base n code*)]
                     [(unsigned-16) (emit ldurh dest base n code*)]
@@ -2137,7 +2136,7 @@
               (cond
                 [(eq? index %zero)
                   (case type
-                    [(integer-64 unsigned-64) (stri-dynamic src base n code*)] ;; TODO will have to do this for the others as well
+                    [(integer-64 unsigned-64) (stri-helper src base n code*)] ;; TODO will have to do this for the others as well
                     [(integer-32 unsigned-32) (emit sturw src base n code*)]
                     [(integer-16 unsigned-16) (emit sturh src base n code*)]
                     [(integer-8  unsigned-8)  (emit sturb src base n code*)]
