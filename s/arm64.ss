@@ -1005,6 +1005,7 @@
   (define stri-helper  (handle-immediate-offset stur stri str strs))
 
   (define ldrswi-helper (handle-immediate-offset ldursw ldrswi ldrsw ldrsws 2))
+  (define ldruwi-helper (handle-immediate-offset ldurw ldruwi ldruw ldruws 2))
 
   (define fldri-helper.dbl (handle-immediate-offset fldur.dbl fldri.dbl fldr.dbl fldrs.dbl))
   (define fstri-helper.dbl (handle-immediate-offset fstur.dbl fstri.dbl fstr.dbl fstrs.dbl))
@@ -1242,9 +1243,12 @@
   (define-op ldrw    ldr/str-reg-op      #b10 #b01 #b111 #b0)
   (define-op ldrsw   ldr/str-reg-op      #b10 #b10 #b111 #b0)
   (define-op ldrsws  ldr/str-reg-op      #b10 #b10 #b111 #b1)
+  (define-op ldruw   ldr/str-reg-op      #b10 #b10 #b010 #b0)
+  (define-op ldruws  ldr/str-reg-op      #b10 #b10 #b010 #b1)
   (define-op strw    ldr/str-reg-op      #b10 #b00 #b111 #b0)
 
   (define-op ldrswi  ldr/str-imm-op      #b10 #b10)
+  (define-op ldruwi  ldr/str-imm-op      #b10 #b01)
   (define-op ldurw   ldur/stur-imm-op    #b10 #b01)
   (define-op ldursw  ldur/stur-imm-op    #b10 #b10)
   (define-op sturw   ldur/stur-imm-op    #b10 #b00)
@@ -2106,8 +2110,8 @@
                   (case type
                     [(integer-64 unsigned-64) (ldri-helper dest base n code*)]
                     [(integer-32)  (ldrswi-helper dest base n code*)]
-                    [(unsigned-32) (emit ldurw dest base n code*)]  ;; TODO will have to do adapt for imm range limitations for the others as well!
-                    [(integer-16)  (emit ldursh dest base n code*)]
+                    [(unsigned-32) (ldruwi-helper dest base n code*)]
+                    [(integer-16)  (emit ldursh dest base n code*)]  ;; TODO will have to do adapt for imm range limitations for the others as well!
                     [(unsigned-16) (emit ldurh dest base n code*)]
                     [(integer-8)   (emit ldursb dest base n code*)]
                     [(unsigned-8)  (emit ldurb dest base n code*)]
