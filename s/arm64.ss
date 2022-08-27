@@ -972,7 +972,9 @@
   ;; TODO rename to something like select-immediate-op
   (define-syntax dynamic-reference
     (syntax-rules ()
-      [(_ unscaled unsigned register register-shifted)
+      [(_ unscaled-imm unsigned-imm register register-shifted)
+       (dynamic-reference unscaled-imm unsigned-imm register register-shifted 3)]
+      [(_ unscaled-imm unsigned-imm register register-shifted shift-count)
         (lambda (src/dest breg n code*)
           (define (bad!) (sorry! "dynamic load/store error with src/dest ~s and breg ~s" src/dest breg))
           (define-syntax make-emit
@@ -986,14 +988,16 @@
                    (if (> n 0)
                        (emit movi `(reg . ,%ratmp) n code*)
                        (emit movn `(reg . ,%ratmp) (lognot n) 0 code*)))))
+          (define mask (- (ash 1 shift-count) 1))
+          (define shifted (fxsra n shift-count))
           (cond
             [(signed9? n)
-              (emit unscaled src/dest breg n code*)]
+              (emit unscaled-imm src/dest breg n code*)]
             ;; TODO generalize the shift handling here for the imm12  case, e.g., for 32-bit it's shift by 4
-            [(and (fx= (fxlogand n 7) 0) (unsigned12? (fx/ n 8)))
-              (emit unsigned src/dest breg (fx/ n 8) code*)]
-            [(and (fx= (fxlogand n 7) 0) (imm16? (fx/ n 8)))
-              (dynamic-helper (make-emit register-shifted) (fx/ n 8) src/dest breg code*)]
+            [(and (fx= (fxlogand n mask) 0) (unsigned12? shifted))
+              (emit unsigned-imm src/dest breg shifted code*)]
+            [(and (fx= (fxlogand n mask) 0) (imm16? shifted))
+              (dynamic-helper (make-emit register-shifted) shifted src/dest breg code*)]
             [(imm16? n)
               (dynamic-helper (make-emit register) n src/dest breg code*)]
             [else (bad!)]))]))
@@ -1001,7 +1005,7 @@
   (define ldri-dynamic  (dynamic-reference ldur ldri ldr ldrs))
   (define stri-dynamic  (dynamic-reference stur stri str strs))
 
-  (define ldrswi-dynamic (dynamic-reference ldursw ldrswi ldrsw ldrss))
+  (define ldrswi-dynamic (dynamic-reference ldursw ldrswi ldrsw ldrsws 2))
 
   (define fldri-dynamic.dbl (dynamic-reference fldur.dbl fldri.dbl fldr.dbl fldrs.dbl))
   (define fstri-dynamic.dbl (dynamic-reference fstur.dbl fstri.dbl fstr.dbl fstrs.dbl))
@@ -1238,9 +1242,10 @@
   ; 32 bit (word)
   (define-op ldrw    ldr/str-reg-op      #b10 #b01 #b111 #b0)
   (define-op ldrsw   ldr/str-reg-op      #b10 #b10 #b111 #b0)
+  (define-op ldrsws  ldr/str-reg-op      #b10 #b10 #b111 #b1)
   (define-op strw    ldr/str-reg-op      #b10 #b00 #b111 #b0)
 
-  (define-op ldrswi  ldr/str-imm-op      #b10 #b10)  ;; TODO LEFT OFF HERE see p C6.2.144
+  (define-op ldrswi  ldr/str-imm-op      #b10 #b10)
   (define-op ldurw   ldur/stur-imm-op    #b10 #b01)
   (define-op ldursw  ldur/stur-imm-op    #b10 #b10)
   (define-op sturw   ldur/stur-imm-op    #b10 #b00)
@@ -2100,9 +2105,9 @@
               (cond
                 [(eq? index %zero)
                   (case type
-                    [(integer-64 unsigned-64) (ldri-dynamic dest base n code*)] ;; TODO will have to do this for the others as well!
-                    [(integer-32)  (emit ldursw dest base n code*)]
-                    [(unsigned-32) (emit ldurw dest base n code*)]
+                    [(integer-64 unsigned-64) (ldri-dynamic dest base n code*)]
+                    [(integer-32)  (ldrswi-dynamic dest base n code*)]
+                    [(unsigned-32) (emit ldurw dest base n code*)]  ;; TODO will have to do adapt for imm range limitations for the others as well!
                     [(integer-16)  (emit ldursh dest base n code*)]
                     [(unsigned-16) (emit ldurh dest base n code*)]
                     [(integer-8)   (emit ldursb dest base n code*)]
