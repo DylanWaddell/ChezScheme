@@ -2311,11 +2311,12 @@
 
   (define asm-read-time-stamp
     (lambda (code* dest)
-      ;; TODO guessing we want to read CNTHP_TVAL_EL2
+      ;; TODO may want to read the timer frequency via mrs of CNTFRQ_EL0:
       ;;      op0  op1   CRn    CRm    op2
-      ;;      #b11 #b100 #b1110 #b0010 #b000
+      ;;      #b11 #b011 #b1110 #b0000 #b000
       (Trivit (dest)
-        (emit mrs #b11 #b100 #b1110 #b0010 #b010 dest code*))))
+        ;; read CNTVCT_EL0
+        (emit mrs #b11 #b011 #b1110 #b0000 #b010 dest code*))))
 
   (define asm-read-counter
     (case-lambda
