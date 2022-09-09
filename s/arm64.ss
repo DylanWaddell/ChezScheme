@@ -2321,13 +2321,13 @@
     (case-lambda
       [(k)
        (lambda (code* dest)
-         (raise "TODO asm-read-counter")
+         (errorf 'asm-read-counter "TODO unimplemented")
          #;
          (Trivit (dest)
            (emit mrc 'al 15 0 dest 15 12 k code*)))]
       [()
        (lambda (code* dest src)
-         (raise "TODO asm-read-counter")
+         (errorf 'asm-read-counter "TODO unimplemented")
          #;
          (Trivit (dest src)
            (emit cmpi src 0
@@ -3046,7 +3046,7 @@
                            (f (cdr types) iint (fx+ idbl 1) (fx+ isp 8))
                            (f (cdr types) iint idbl isp))]
                       [(fp-ftd& ,ftd)
-                       (raise "TODO fp-ftd&")]
+                       (errorf 'asm-foreign-callable "TODO fp-ftd&")]
                       [else
                        (if (fx< iint int-arg-reg-cnt)
                            (f (cdr types) (fx+ iint 1) idbl (fx+ isp 8))
@@ -3072,7 +3072,7 @@
                             ,(f (cdr types) iint (fx+ idbl 1) (fx+ isp 8)))
                            (f (cdr types) iint idbl isp))]
                       [(fp-ftd& ,ftd)
-                       (raise "TODO fp-ftd&")]
+                       (errorf 'asm-foreign-callable "TODO fp-ftd&")]
                       [else
                        (if (fx< iint int-arg-reg-cnt)
                            (%seq
@@ -3109,7 +3109,7 @@
                              (cons (load-single-stack risp) locs)
                              iint (fx+ idbl 1) (fx+ risp 8) sisp))]
                       [(fp-ftd& ,ftd)
-                       (raise "TODO fp-ftd&")
+                       (errorf 'asm-foreign-callable "TODO fp-ftd&")
                        #;
                        (let* ([classes (classify-eightbytes ftd)]
                               [ints (count 'integer classes)]
@@ -3139,7 +3139,7 @@
             (lambda (result-type synthesize-first? return-stack-offset)
               (nanopass-case (Ltype Type) result-type
                 [(fp-ftd& ,ftd)
-                 (raise "TODO deal with fp-ftd&")
+                 (errorf 'asm-foreign-callable "TODO fp-ftd&")
                  #;
                  (let* ([members ($ftd->members ftd)]
                         [num-members (length members)])
